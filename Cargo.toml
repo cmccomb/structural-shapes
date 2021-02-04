@@ -1,0 +1,18 @@
+[package]
+name = "trussx"
+version = "0.1.1"
+authors = ["Chris McComb <ccmcc2012@gmail.com>"]
+description = "Utilities for designing and analyzing truss structures"
+edition = "2018"
+readme = "README.md"
+repository = "https://github.com/cmccomb/trussx"
+homepage = "https://github.com/cmccomb/trussx"
+documentation = "https://docs.rs/trussx"
+license = "MIT"
+keywords = ["truss", "structural-analysis", "engineering"]
+categories = ["mathematics", "science", "simulation"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+petgraph = "0.5.1"
