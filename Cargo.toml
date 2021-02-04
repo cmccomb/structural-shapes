@@ -1,18 +1,17 @@
 [package]
-name = "trussx"
-version = "0.1.1"
+name = "structural-shapes"
+version = "0.1.0"
 authors = ["Chris McComb <ccmcc2012@gmail.com>"]
-description = "Utilities for designing and analyzing truss structures"
+description = "Common structural shapes"
 edition = "2018"
 readme = "README.md"
-repository = "https://github.com/cmccomb/trussx"
-homepage = "https://github.com/cmccomb/trussx"
-documentation = "https://docs.rs/trussx"
+repository = "https://github.com/cmccomb/structural-shapes"
+homepage = "https://github.com/cmccomb/structural-shapes"
+documentation = "https://docs.rs/structural-shapes"
 license = "MIT"
-keywords = ["truss", "structural-analysis", "engineering"]
+keywords = ["structural-analysis", "engineering"]
 categories = ["mathematics", "science", "simulation"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-petgraph = "0.5.1"
