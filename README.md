@@ -1,5 +1,5 @@
-[![Build Status](https://travis-ci.com/cmccomb/trussx.svg?branch=master)](https://travis-ci.com/cmccomb/structural-shapes)
-[![Crates.io](https://img.shields.io/crates/v/trussx.svg)](https://crates.io/crates/structural-shapes)
+[![Build Status](https://travis-ci.com/cmccomb/structural-shapes.svg?branch=master)](https://travis-ci.com/cmccomb/structural-shapes)
+[![Crates.io](https://img.shields.io/crates/v/structural-shapes.svg)](https://crates.io/crates/structural-shapes)
 [![docs.rs](https://docs.rs/trussx/badge.svg)](https://docs.rs/structural-shapes)
 # About
 This package provides utilities for a variety of different structural shapes. Currently, the following are included:
@@ -17,7 +17,7 @@ cargo install structural_shapes
 Then add it to your `Cargo.toml` with:
 ```toml
 [dependencies]
-strutural_shapes = "0.1.0"
+strutural_shapes = "0.1.1"
 ```
 and add this to your root:
 ```rust
