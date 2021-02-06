@@ -6,7 +6,7 @@
 //! This package provides utilities for designing and analyzing truss structures
 
 /// This enum contains different structural shapes
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 #[non_exhaustive]
 pub enum StructuralShape {
     /// This is a pipe with an outer_radius and a thickness

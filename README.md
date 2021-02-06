@@ -8,29 +8,14 @@ This package provides utilities for a variety of different structural shapes. Cu
 - I-Beams
 - Rods
 
-# Installation
-Install through ``crates.io`` with:
-```shell script
-cargo install structural_shapes
-```
-
-Then add it to your `Cargo.toml` with:
-```toml
-[dependencies]
-strutural_shapes = "0.1.4"
-```
-and add this to your root:
-```rust
-use structural_shapes;
-```
 # Usage
 Here are some basic examples of usage
 
 ```rust
-fn main() {
+ fn main() {
     let x = structural_shapes::Rod{radius: 1.0};
     println!("cross sectional area: {:?}", x.area());
     println!("moment of inertia: {:?}", x.moi_x());
     println!("moment of inertia with displacement 2.0: {:?}", x.moi_x_d());
-}
+ }
 ```
