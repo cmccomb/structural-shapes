@@ -17,7 +17,7 @@ cargo install structural_shapes
 Then add it to your `Cargo.toml` with:
 ```toml
 [dependencies]
-strutural_shapes = "0.1.3"
+strutural_shapes = "0.1.4"
 ```
 and add this to your root:
 ```rust
@@ -27,10 +27,10 @@ use structural_shapes;
 Here are some basic examples of usage
 
 ```rust
-use structural_shapes;
 fn main() {
     let x = structural_shapes::Rod{radius: 1.0};
     println!("cross sectional area: {:?}", x.area());
-    println!("moment of inertia: {:?}", x.moment_of_inertia());
+    println!("moment of inertia: {:?}", x.moi_x());
+    println!("moment of inertia with displacement 2.0: {:?}", x.moi_x_d());
 }
 ```

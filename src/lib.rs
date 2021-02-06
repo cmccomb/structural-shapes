@@ -55,16 +55,22 @@ impl StructuralShape {
     /// ```
     /// use structural_shapes::StructuralShape;
     /// let shape = StructuralShape::Rod{radius: 2.0};
-    /// let area = shape.moment_of_inertia_x();
+    /// let area = shape.moi_x();
     /// ```
-    pub fn moment_of_inertia_x(&self) -> f64 {
+    pub fn moi_x(&self) -> f64 {
         match self {
             StructuralShape::Pipe {
                 outer_radius,
                 thickness,
             } => {
-                std::f64::consts::PI * (outer_radius.powi(4) - (outer_radius - thickness).powi(4))
-                    / 4.0
+                StructuralShape::Rod {
+                    radius: *outer_radius,
+                }
+                .moi_x()
+                    - StructuralShape::Rod {
+                        radius: (outer_radius - thickness),
+                    }
+                    .moi_x()
             }
             StructuralShape::IBeam {
                 width,
@@ -72,19 +78,33 @@ impl StructuralShape {
                 flange_thickness,
                 web_thickness,
             } => {
-                width * height.powi(3) / 12.0
+                StructuralShape::Rectangle {
+                    width: *width,
+                    height: *height,
+                }
+                .moi_x()
                     - 2.0
-                        * ((width - web_thickness) / 2.0)
-                        * (height - 2.0 * flange_thickness).powi(3)
-                        / 12.0
+                        * StructuralShape::Rectangle {
+                            width: ((width - web_thickness) / 2.0),
+                            height: (height - 2.0 * flange_thickness),
+                        }
+                        .moi_x()
             }
             StructuralShape::BoxBeam {
                 width,
                 height,
                 thickness,
             } => {
-                width * height.powi(3) / 12.0
-                    - (width - thickness) * (height - thickness).powi(3) / 12.0
+                StructuralShape::Rectangle {
+                    width: *width,
+                    height: *height,
+                }
+                .moi_x()
+                    - StructuralShape::Rectangle {
+                        width: (width - 2.0 * thickness),
+                        height: (height - 2.0 * thickness),
+                    }
+                    .moi_x()
             }
             StructuralShape::Rod { radius } => std::f64::consts::PI * radius.powi(4) / 4.0,
             StructuralShape::Rectangle { width, height } => width * height.powi(3) / 12.0,
@@ -95,22 +115,40 @@ impl StructuralShape {
     /// ```
     /// use structural_shapes::StructuralShape;
     /// let shape = StructuralShape::Rod{radius: 2.0};
-    /// let area = shape.moment_of_inertia_y();
+    /// let area = shape.moi_y();
     /// ```
-    pub fn moment_of_inertia_y(&self) -> f64 {
+    pub fn moi_y(&self) -> f64 {
         match self {
-            StructuralShape::Pipe { .. } => self.moment_of_inertia_x(),
-            StructuralShape::IBeam { .. } => 0.0,
+            StructuralShape::Pipe { .. } => self.moi_x(),
+            StructuralShape::IBeam {
+                height,
+                width,
+                flange_thickness,
+                web_thickness,
+            } => {
+                2.0 * StructuralShape::Rectangle {
+                    height: *width,
+                    width: *flange_thickness,
+                }
+                .moi_x()
+                    + StructuralShape::Rectangle {
+                        height: *web_thickness,
+                        width: (height - 2.0 * flange_thickness),
+                    }
+                    .moi_x()
+            }
             StructuralShape::BoxBeam {
                 width,
                 height,
                 thickness,
-            } => {
-                height * width.powi(3) / 12.0
-                    - (height - thickness) * (width - thickness).powi(3) / 12.0
+            } => StructuralShape::BoxBeam {
+                width: *height,
+                height: *width,
+                thickness: *thickness,
             }
-            StructuralShape::Rod { .. } => self.moment_of_inertia_x(),
-            StructuralShape::Rectangle { .. } => self.moment_of_inertia_x(),
+            .moi_x(),
+            StructuralShape::Rod { .. } => self.moi_x(),
+            StructuralShape::Rectangle { .. } => self.moi_x(),
         }
     }
 
@@ -136,9 +174,31 @@ impl StructuralShape {
                 width,
                 height,
                 thickness,
-            } => width * height - (width - thickness) * (height - thickness),
+            } => width * height - (width - 2.0 * thickness) * (height - 2.0 * thickness),
             StructuralShape::Rod { radius } => std::f64::consts::PI * radius.powi(2),
             StructuralShape::Rectangle { width, height } => width * height,
         }
+    }
+
+    /// This function returns the moment of intertia of the structural shape around the x-axis when
+    /// displaced perpendicular to the axis by a distance d
+    /// ```
+    /// use structural_shapes::StructuralShape;
+    /// let shape = StructuralShape::Rod{radius: 2.0};
+    /// let area = shape.moi_x_d(2.0);
+    /// ```
+    pub fn moi_x_d(&self, d: f64) -> f64 {
+        self.moi_x() + self.area() * d.powi(2)
+    }
+
+    /// This function returns the moment of intertia of the structural shape around the y-axis when
+    /// displaced perpendicular to the axis by a distance d
+    /// ```
+    /// use structural_shapes::StructuralShape;
+    /// let shape = StructuralShape::Rod{radius: 2.0};
+    /// let area = shape.moi_y_d(2.0);
+    /// ```
+    pub fn moi_y_d(&self, d: f64) -> f64 {
+        self.moi_y() + self.area() * d.powi(2)
     }
 }
