@@ -1,14 +1,15 @@
 #[cfg(test)]
 mod tests {
-    use structural_shapes::StructuralShape;
+    use structural_shapes::{CompositeShape, StructuralShape};
 
     #[test]
     fn rod() {
-        let x = StructuralShape::Rod { radius: 1.0 };
+        let x = StructuralShape::Rod {
+            radius: 1.0,
+            center_of_gravity: (0.0, 0.0),
+        };
         x.moi_x();
         x.moi_y();
-        x.moi_x_d(2.0);
-        x.moi_y_d(2.0);
     }
 
     #[test]
@@ -16,11 +17,10 @@ mod tests {
         let x = StructuralShape::Pipe {
             outer_radius: 1.0,
             thickness: 0.01,
+            center_of_gravity: (0.0, 0.0),
         };
         x.moi_x();
         x.moi_y();
-        x.moi_x_d(2.0);
-        x.moi_y_d(2.0);
     }
 
     #[test]
@@ -28,11 +28,10 @@ mod tests {
         let x = StructuralShape::Rectangle {
             width: 2.0,
             height: 2.0,
+            center_of_gravity: (0.0, 0.0),
         };
         x.moi_x();
         x.moi_y();
-        x.moi_x_d(2.0);
-        x.moi_y_d(2.0);
     }
 
     #[test]
@@ -41,11 +40,10 @@ mod tests {
             width: 2.0,
             height: 2.0,
             thickness: 0.05,
+            center_of_gravity: (0.0, 0.0),
         };
         x.moi_x();
         x.moi_y();
-        x.moi_x_d(2.0);
-        x.moi_y_d(2.0);
     }
 
     #[test]
@@ -55,10 +53,25 @@ mod tests {
             height: 2.0,
             flange_thickness: 0.05,
             web_thickness: 0.05,
+            center_of_gravity: (0.0, 0.0),
         };
         x.moi_x();
         x.moi_y();
-        x.moi_x_d(2.0);
-        x.moi_y_d(2.0);
+    }
+
+    #[test]
+    fn composite() {
+        let mut x = CompositeShape::default();
+        x.add(StructuralShape::Rod {
+            radius: 2.0,
+            center_of_gravity: (2.0, 0.0),
+        });
+        x.add(StructuralShape::Rod {
+            radius: 2.0,
+            center_of_gravity: (-2.0, 0.0),
+        });
+        x.moi_y();
+        x.moi_x();
+        x.area();
     }
 }

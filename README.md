@@ -7,15 +7,31 @@ This package provides utilities for a variety of different structural shapes. Cu
 - Box Beams
 - I-Beams
 - Rods
+- Composite Shapes
 
 # Usage
 Here are some basic examples of usage
 
 ```rust
  fn main() {
-    let x = structural_shapes::Rod{radius: 1.0};
+    let x = structural_shapes::Rod{radius: 1.0, center_of_gravity: (0.0, 1.0)};
     println!("cross sectional area: {:?}", x.area());
     println!("moment of inertia: {:?}", x.moi_x());
-    println!("moment of inertia with displacement 2.0: {:?}", x.moi_x_d());
  }
+```
+You can also create composite shapes that are composed of more than one primitive:
+```rust
+fn main() {
+    let mut x = CompositeShape::default();
+    x.add(StructuralShape::Rod {
+        radius: 2.0,
+        center_of_gravity: (2.0, 0.0),
+    });
+    x.add(StructuralShape::Rod {
+        radius: 2.0,
+        center_of_gravity: (-2.0, 0.0),
+    });
+    println!("cross sectional area: {:?}", x.area());
+    println!("moment of inertia: {:?}", x.moi_x());
+}
 ```
