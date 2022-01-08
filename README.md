@@ -1,6 +1,7 @@
-[![Build Status](https://travis-ci.com/cmccomb/structural-shapes.svg?branch=main)](https://travis-ci.com/cmccomb/structural-shapes)
+[![build](https://github.com/cmccomb/structural-shapes/actions/workflows/tests.yml/badge.svg)](https://github.com/cmccomb/structural-shapes/actions/workflows/tests.yml)
 [![Crates.io](https://img.shields.io/crates/v/structural-shapes.svg)](https://crates.io/crates/structural-shapes)
 [![docs.rs](https://docs.rs/structural-shapes/badge.svg)](https://docs.rs/structural-shapes)
+
 # About
 This package provides utilities for a variety of different structural shapes. Currently, the following are included:
 - Rods
