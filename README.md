@@ -14,25 +14,24 @@ This package provides utilities for a variety of different structural shapes. Cu
 Here are some basic examples of usage
 
 ```rust
- fn main() {
-    let x = structural_shapes::Rod{radius: 1.0, center_of_gravity: (0.0, 1.0)};
-    println!("cross sectional area: {:?}", x.area());
-    println!("moment of inertia: {:?}", x.moi_x());
- }
+use structural_shapes::StructuralShape;
+let x = StructuralShape::Rod{radius: 1.0, center_of_gravity: (0.0, 1.0)};
+println!("cross sectional area: {:?}", x.area());
+println!("moment of inertia: {:?}", x.moi_x());
 ```
+
 You can also create composite shapes that are composed of more than one primitive:
 ```rust
-fn main() {
-    let mut x = CompositeShape::new()
-        .add(StructuralShape::Rod {
-          radius: 2.0,
-            center_of_gravity: (2.0, 0.0),
-        })
-        .add(StructuralShape::Rod {
-            radius: 2.0,
-            center_of_gravity: (-2.0, 0.0),
-        });
-    println!("cross sectional area: {:?}", x.area());
-    println!("moment of inertia: {:?}", x.moi_x());
-}
+use structural_shapes::{CompositeShape, StructuralShape};
+let mut x = CompositeShape::new()
+    .add(StructuralShape::Rod {
+      radius: 2.0,
+        center_of_gravity: (2.0, 0.0),
+    })
+    .add(StructuralShape::Rod {
+        radius: 2.0,
+        center_of_gravity: (-2.0, 0.0),
+    });
+println!("cross sectional area: {:?}", x.area());
+println!("moment of inertia: {:?}", x.moi_x());
 ```
