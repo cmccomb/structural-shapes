@@ -4,6 +4,29 @@
 #![warn(clippy::missing_docs_in_private_items)]
 #![doc = include_str!("../README.md")]
 
+use num::{Float, NumCast};
+use typenum::{P4, Z0};
+use uom::si::{
+    f64::{Area, Length, Volume},
+    length::meter,
+    {Quantity, ISQ, SI},
+};
+
+type Moment = Quantity<ISQ<P4, Z0, Z0, Z0, Z0, Z0, Z0>, SI<f64>, f64>;
+
+/// A helper function supporting conversion of floating point numbers to meters
+pub fn length<T: Float>(l: T) -> Length {
+    Length::new::<meter>(NumCast::from(l).expect("The input must be castable to a float."))
+}
+
+/// A helper function supporting conversion of floating point points to length tuples
+pub fn point<T: Float>(p0: T, p1: T) -> (Length, Length) {
+    (
+        Length::new::<meter>(NumCast::from(p0).expect("The input must be castable to a float.")),
+        Length::new::<meter>(NumCast::from(p1).expect("The input must be castable to a float.")),
+    )
+}
+
 /// This enum contains different structural shapes
 #[derive(Clone, Copy, Debug)]
 #[non_exhaustive]
@@ -11,75 +34,75 @@ pub enum StructuralShape {
     /// This is a pipe with an outer_radius and a thickness
     Pipe {
         /// Outer radius of hte pipe
-        outer_radius: f64,
+        outer_radius: Length,
         /// Thickness of the pipe wall
-        thickness: f64,
+        thickness: Length,
         /// Coordinates of center of gravity
-        center_of_gravity: (f64, f64),
+        center_of_gravity: (Length, Length),
     },
     /// This is an I-Beam, with a width, height, web thickness, and flange thickness
     IBeam {
         /// Width of the beam
-        width: f64,
+        width: Length,
         /// Height of the beam
-        height: f64,
+        height: Length,
         /// Thickness of the web
-        web_thickness: f64,
+        web_thickness: Length,
         /// Thickness of the flange
-        flange_thickness: f64,
+        flange_thickness: Length,
         /// Coordinates of center of gravity
-        center_of_gravity: (f64, f64),
+        center_of_gravity: (Length, Length),
     },
     /// This is a box beam with a width, height, and thickness
     BoxBeam {
         /// Width of the box beam
-        width: f64,
+        width: Length,
         /// Height of the box beam
-        height: f64,
+        height: Length,
         /// Thickness of the wall
-        thickness: f64,
+        thickness: Length,
         /// Coordinates of center of gravity
-        center_of_gravity: (f64, f64),
+        center_of_gravity: (Length, Length),
     },
     /// This is a rod with a radius only
     Rod {
         /// Radius of the road
-        radius: f64,
+        radius: Length,
         /// Coordinates of center of gravity
-        center_of_gravity: (f64, f64),
+        center_of_gravity: (Length, Length),
     },
     /// This is a solid rectangular with width and height
     Rectangle {
         /// Width of the rectangle
-        width: f64,
+        width: Length,
         /// Height of the rectangle
-        height: f64,
+        height: Length,
         /// Coordinates of center of gravity
-        center_of_gravity: (f64, f64),
+        center_of_gravity: (Length, Length),
     },
 }
 
 impl StructuralShape {
     /// This function returns the moment of inertia of the structural shape around the x-axis
     /// ```
-    /// # use structural_shapes::StructuralShape;
-    /// let shape = StructuralShape::Rod{radius: 2.0, center_of_gravity: (0.0, 0.0)};
-    /// let area = shape.moi_x();
+    /// # use structural_shapes::{StructuralShape, length, point};
+    /// let shape = StructuralShape::Rod{radius: length(2.0), center_of_gravity: point(0.0, 0.0)};
+    /// let moi = shape.moi_x();
     /// ```
-    pub fn moi_x(&self) -> f64 {
-        match self {
+    pub fn moi_x(&self) -> Moment {
+        match *self {
             StructuralShape::Pipe {
                 outer_radius,
                 thickness,
                 center_of_gravity,
             } => CompositeShape::new()
                 .add(StructuralShape::Rod {
-                    radius: *outer_radius,
-                    center_of_gravity: *center_of_gravity,
+                    radius: outer_radius,
+                    center_of_gravity,
                 })
                 .sub(StructuralShape::Rod {
                     radius: (outer_radius - thickness),
-                    center_of_gravity: *center_of_gravity,
+                    center_of_gravity,
                 })
                 .moi_x(),
             StructuralShape::IBeam {
@@ -89,11 +112,11 @@ impl StructuralShape {
                 web_thickness,
                 center_of_gravity,
             } => composite_ibeam(
-                *width,
-                *height,
-                *web_thickness,
-                *flange_thickness,
-                *center_of_gravity,
+                width,
+                height,
+                web_thickness,
+                flange_thickness,
+                center_of_gravity,
             )
             .moi_y(),
             StructuralShape::BoxBeam {
@@ -103,47 +126,50 @@ impl StructuralShape {
                 center_of_gravity,
             } => CompositeShape::new()
                 .add(StructuralShape::Rectangle {
-                    width: *width,
-                    height: *height,
-                    center_of_gravity: *center_of_gravity,
+                    width,
+                    height,
+                    center_of_gravity,
                 })
                 .sub(StructuralShape::Rectangle {
                     width: (width - 2.0 * thickness),
                     height: (height - 2.0 * thickness),
-                    center_of_gravity: *center_of_gravity,
+                    center_of_gravity,
                 })
                 .moi_x(),
             StructuralShape::Rod {
                 radius,
                 center_of_gravity,
             } => {
-                std::f64::consts::PI * radius.powi(4) / 4.0
-                    + self.area() * center_of_gravity.0.powi(2)
+                std::f64::consts::PI * radius * radius * radius * radius / 4.0
+                    + self.area() * center_of_gravity.0 * center_of_gravity.0
             }
             StructuralShape::Rectangle {
                 width,
                 height,
                 center_of_gravity,
-            } => width * height.powi(3) / 12.0 + self.area() * center_of_gravity.0.powi(2),
+            } => {
+                width * height * height * height / 12.0
+                    + self.area() * center_of_gravity.0 * center_of_gravity.0
+            }
         }
     }
 
     /// This function returns the moment of inertia of hte structural shape around the y-axis
     /// ```
-    /// # use structural_shapes::StructuralShape;
-    /// let shape = StructuralShape::Rod{radius: 2.0, center_of_gravity: (0.0, 0.0)};
+    /// # use structural_shapes::{StructuralShape, length, point};
+    /// let shape = StructuralShape::Rod{radius: length(2.0), center_of_gravity: point(0.0, 0.0)};
     /// let area = shape.moi_y();
     /// ```
-    pub fn moi_y(&self) -> f64 {
-        match self {
+    pub fn moi_y(&self) -> Moment {
+        match *self {
             StructuralShape::Pipe {
                 outer_radius,
                 thickness,
                 center_of_gravity,
             } => StructuralShape::Pipe {
-                outer_radius: *outer_radius,
-                thickness: *thickness,
-                center_of_gravity: swap(*center_of_gravity),
+                outer_radius,
+                thickness,
+                center_of_gravity: swap(center_of_gravity),
             }
             .moi_x(),
 
@@ -154,11 +180,11 @@ impl StructuralShape {
                 web_thickness,
                 center_of_gravity,
             } => composite_ibeam(
-                *width,
-                *height,
-                *web_thickness,
-                *flange_thickness,
-                *center_of_gravity,
+                width,
+                height,
+                web_thickness,
+                flange_thickness,
+                center_of_gravity,
             )
             .moi_y(),
             StructuralShape::BoxBeam {
@@ -167,40 +193,47 @@ impl StructuralShape {
                 thickness,
                 center_of_gravity,
             } => StructuralShape::BoxBeam {
-                width: *height,
-                height: *width,
-                thickness: *thickness,
-                center_of_gravity: swap(*center_of_gravity),
+                width: height,
+                height: width,
+                thickness,
+                center_of_gravity: swap(center_of_gravity),
             }
             .moi_x(),
             StructuralShape::Rod {
                 radius,
                 center_of_gravity,
             } => {
-                std::f64::consts::PI * radius.powi(4) / 4.0
-                    + self.area() * center_of_gravity.1.powf(2.0)
+                std::f64::consts::PI * radius * radius * radius * radius / 4.0
+                    + self.area() * center_of_gravity.1 * center_of_gravity.1
             }
             StructuralShape::Rectangle {
                 width,
                 height,
                 center_of_gravity,
-            } => width * height.powi(3) / 12.0 + self.area() * center_of_gravity.0.powf(2.0),
+            } => {
+                width * height * height * height / 12.0
+                    + self.area() * center_of_gravity.1 * center_of_gravity.1
+            }
         }
     }
 
     /// This function returns the cross-sectional area of the structural shape
     /// ```
-    /// # use structural_shapes::StructuralShape;
-    /// let shape = StructuralShape::Rod{radius: 2.0, center_of_gravity: (0.0, 0.0)};
+    /// # use structural_shapes::{StructuralShape, length, point};
+    /// let shape = StructuralShape::Rod{radius: length(2.0), center_of_gravity: point(0.0, 0.0)};
     /// let area = shape.area();
     /// ```
-    pub fn area(&self) -> f64 {
+    pub fn area(&self) -> Area {
         match *self {
             StructuralShape::Pipe {
                 outer_radius,
                 thickness,
                 ..
-            } => std::f64::consts::PI * (outer_radius.powi(2) - (outer_radius - thickness).powi(2)),
+            } => {
+                std::f64::consts::PI
+                    * (outer_radius * outer_radius
+                        - (outer_radius - thickness) * (outer_radius - thickness))
+            }
             StructuralShape::IBeam {
                 width,
                 height,
@@ -214,13 +247,13 @@ impl StructuralShape {
                 thickness,
                 ..
             } => width * height - (width - 2.0 * thickness) * (height - 2.0 * thickness),
-            StructuralShape::Rod { radius, .. } => std::f64::consts::PI * radius.powi(2),
+            StructuralShape::Rod { radius, .. } => std::f64::consts::PI * radius * radius,
             StructuralShape::Rectangle { width, height, .. } => width * height,
         }
     }
 
     /// A function to return the current center of gravity for a shape
-    pub(crate) fn get_cog(&self) -> (f64, f64) {
+    pub(crate) fn get_cog(&self) -> (Length, Length) {
         match *self {
             StructuralShape::Pipe {
                 center_of_gravity, ..
@@ -241,7 +274,7 @@ impl StructuralShape {
     }
 
     /// A function to set the current center of gravity for a shape
-    pub(crate) fn set_cog(&mut self, cog: (f64, f64)) {
+    pub(crate) fn set_cog(&mut self, cog: (Length, Length)) {
         match *self {
             StructuralShape::Pipe {
                 ref mut center_of_gravity,
@@ -282,12 +315,12 @@ impl StructuralShape {
 /// # use structural_shapes::*;
 /// let x = CompositeShape::new()
 ///     .add(StructuralShape::Rod {
-///         radius: 2.0,
-///         center_of_gravity: (2.0, 0.0)
+///         radius: length(2.0),
+///         center_of_gravity: point(2.0, 0.0)
 ///     })
 ///     .add(StructuralShape::Rod {
-///         radius: 2.0,
-///         center_of_gravity: (-2.0, 0.0)
+///         radius: length(2.0),
+///         center_of_gravity: point(-2.0, 0.0)
 ///     });
 /// ```
 #[derive(Clone, Debug)]
@@ -312,9 +345,9 @@ impl CompositeShape {
         self.clone()
     }
     /// Calculate center of gravity and update COG of members
-    pub fn calculate_cog(&self) -> (f64, f64) {
+    pub fn calculate_cog(&self) -> (Length, Length) {
         let area = self.area();
-        let area_times_cx: f64 = self
+        let area_times_cx: Volume = self
             .shapes
             .iter()
             .map(|x| {
@@ -322,7 +355,7 @@ impl CompositeShape {
                 (x.0 as f64) * x.1.area() * center_of_gravity.0
             })
             .sum();
-        let area_times_cy: f64 = self
+        let area_times_cy: Volume = self
             .shapes
             .iter()
             .map(|x| {
@@ -345,15 +378,15 @@ impl CompositeShape {
     }
 
     /// This function returns the moment of inertia of the composite shape around the x-axis
-    pub fn moi_x(&self) -> f64 {
+    pub fn moi_x(&self) -> Moment {
         self.shapes.iter().map(|x| (x.0 as f64) * x.1.moi_x()).sum()
     }
     /// This function returns the moment of inertia of the composite shape around the y-axis
-    pub fn moi_y(&self) -> f64 {
+    pub fn moi_y(&self) -> Moment {
         self.shapes.iter().map(|x| (x.0 as f64) * x.1.moi_y()).sum()
     }
     /// This function returns the area of the composite shape
-    pub fn area(&self) -> f64 {
+    pub fn area(&self) -> Area {
         self.shapes.iter().map(|x| (x.0 as f64) * x.1.area()).sum()
     }
 }
@@ -366,17 +399,17 @@ impl Default for CompositeShape {
 }
 
 /// Function for swapping values
-fn swap(pair: (f64, f64)) -> (f64, f64) {
+fn swap(pair: (Length, Length)) -> (Length, Length) {
     (pair.1, pair.0)
 }
 
 /// Create a composite I-beam from some initial parameters
 fn composite_ibeam(
-    width: f64,
-    height: f64,
-    web_thickness: f64,
-    flange_thickness: f64,
-    center_of_gravity: (f64, f64),
+    width: Length,
+    height: Length,
+    web_thickness: Length,
+    flange_thickness: Length,
+    center_of_gravity: (Length, Length),
 ) -> CompositeShape {
     CompositeShape::new()
         .add(StructuralShape::Rectangle {
