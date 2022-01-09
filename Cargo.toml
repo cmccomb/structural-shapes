@@ -1,6 +1,6 @@
 [package]
 name = "structural-shapes"
-version = "0.2.1"
+version = "0.2.2"
 authors = ["Chris McComb <ccmcc2012@gmail.com>"]
 description = "Common structural shapes"
 edition = "2018"
