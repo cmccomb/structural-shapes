@@ -11,7 +11,6 @@ use uom::si::{
     length::meter,
     {Quantity, ISQ, SI},
 };
-
 type Moment = Quantity<ISQ<P4, Z0, Z0, Z0, Z0, Z0, Z0>, SI<f64>, f64>;
 
 /// A helper function supporting conversion of floating point numbers to meters
@@ -83,10 +82,82 @@ pub enum StructuralShape {
 }
 
 impl StructuralShape {
+    /// Make a new rod without COG
+    /// ```
+    /// # use structural_shapes::StructuralShape;
+    /// let shape = StructuralShape::new_rod(2.0);
+    /// ```
+    pub fn new_rod(radius: f64) -> StructuralShape {
+        StructuralShape::Rod {
+            radius: length(radius),
+            center_of_gravity: point(0.0, 0.0),
+        }
+    }
+
+    /// Make a new pipe without COG
+    /// ```
+    /// # use structural_shapes::StructuralShape;
+    /// let shape = StructuralShape::new_pipe(2.0, 0.15);
+    /// ```
+    pub fn new_pipe(radius: f64, thickness: f64) -> StructuralShape {
+        StructuralShape::Pipe {
+            outer_radius: length(radius),
+            thickness: length(thickness),
+            center_of_gravity: point(0.0, 0.0),
+        }
+    }
+
+    /// Make a new rectangle without COG
+    /// ```
+    /// # use structural_shapes::StructuralShape;
+    /// let shape = StructuralShape::new_rectangle(2.0, 2.0);
+    /// ```
+    pub fn new_rectangle(height: f64, width: f64) -> StructuralShape {
+        StructuralShape::Rectangle {
+            width: length(width),
+            height: length(height),
+            center_of_gravity: point(0.0, 0.0),
+        }
+    }
+
+    /// Make a new boxbeam without COG
+    /// ```
+    /// # use structural_shapes::StructuralShape;
+    /// let shape = StructuralShape::new_boxbeam(2.0, 2.0, 0.15);
+    /// ```
+    pub fn new_boxbeam(height: f64, width: f64, thickness: f64) -> StructuralShape {
+        StructuralShape::BoxBeam {
+            width: length(width),
+            height: length(height),
+            thickness: length(thickness),
+            center_of_gravity: point(0.0, 0.0),
+        }
+    }
+
+    /// Make a new Ibeam without COG
+    /// ```
+    /// # use structural_shapes::StructuralShape;
+    /// let shape = StructuralShape::new_ibeam(2.0, 2.0, 0.15);
+    /// ```
+    pub fn new_ibeam(
+        height: f64,
+        width: f64,
+        web_thickness: f64,
+        flange_thickness: f64,
+    ) -> StructuralShape {
+        StructuralShape::IBeam {
+            width: length(width),
+            height: length(height),
+            web_thickness: length(web_thickness),
+            center_of_gravity: point(0.0, 0.0),
+            flange_thickness: length(flange_thickness),
+        }
+    }
+
     /// This function returns the moment of inertia of the structural shape around the x-axis
     /// ```
-    /// # use structural_shapes::{StructuralShape, length, point};
-    /// let shape = StructuralShape::Rod{radius: length(2.0), center_of_gravity: point(0.0, 0.0)};
+    /// # use structural_shapes::{StructuralShape};
+    /// let shape = StructuralShape::new_rod(2.0);
     /// let moi = shape.moi_x();
     /// ```
     pub fn moi_x(&self) -> Moment {
