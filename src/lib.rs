@@ -137,7 +137,7 @@ impl StructuralShape {
     /// Make a new Ibeam without COG
     /// ```
     /// # use structural_shapes::StructuralShape;
-    /// let shape = StructuralShape::new_ibeam(2.0, 2.0, 0.15);
+    /// let shape = StructuralShape::new_ibeam(2.0, 2.0, 0.15, 0.15);
     /// ```
     pub fn new_ibeam(
         height: f64,
@@ -227,8 +227,8 @@ impl StructuralShape {
 
     /// This function returns the moment of inertia of hte structural shape around the y-axis
     /// ```
-    /// # use structural_shapes::{StructuralShape, length, point};
-    /// let shape = StructuralShape::Rod{radius: length(2.0), center_of_gravity: point(0.0, 0.0)};
+    /// # use structural_shapes::StructuralShape;
+    /// let shape = StructuralShape::new_rod(2.0);
     /// let area = shape.moi_y();
     /// ```
     pub fn moi_y(&self) -> Moment {
@@ -290,8 +290,8 @@ impl StructuralShape {
 
     /// This function returns the cross-sectional area of the structural shape
     /// ```
-    /// # use structural_shapes::{StructuralShape, length, point};
-    /// let shape = StructuralShape::Rod{radius: length(2.0), center_of_gravity: point(0.0, 0.0)};
+    /// # use structural_shapes::StructuralShape;
+    /// let shape = StructuralShape::new_rod(2.0);
     /// let area = shape.area();
     /// ```
     pub fn area(&self) -> Area {
@@ -321,6 +321,17 @@ impl StructuralShape {
             StructuralShape::Rod { radius, .. } => std::f64::consts::PI * radius * radius,
             StructuralShape::Rectangle { width, height, .. } => width * height,
         }
+    }
+
+    /// A function to set the center of gravity of a shape
+    /// ```
+    /// # use structural_shapes::{StructuralShape};
+    /// let shape = StructuralShape::new_rod(2.0).with_cog(0.0, 0.0);
+    /// let moi = shape.moi_x();
+    /// ```
+    pub fn with_cog(&mut self, x: f64, y: f64) -> StructuralShape {
+        self.set_cog((length(x), length(y)));
+        self.clone()
     }
 
     /// A function to return the current center of gravity for a shape
@@ -385,14 +396,8 @@ impl StructuralShape {
 /// ```
 /// # use structural_shapes::*;
 /// let x = CompositeShape::new()
-///     .add(StructuralShape::Rod {
-///         radius: length(2.0),
-///         center_of_gravity: point(2.0, 0.0)
-///     })
-///     .add(StructuralShape::Rod {
-///         radius: length(2.0),
-///         center_of_gravity: point(-2.0, 0.0)
-///     });
+///     .add(StructuralShape::new_rod(2.0).with_cog(2.0, 0.0))
+///     .add(StructuralShape::new_rod(2.0).with_cog(-2.0, 0.0));
 /// ```
 #[derive(Clone, Debug)]
 pub struct CompositeShape {

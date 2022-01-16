@@ -15,27 +15,18 @@ This package provides utilities for a variety of different structural shapes. Cu
 Here are some basic examples of usage
 
 ```rust
-use structural_shapes::{StructuralShape, length, point};
-let x = StructuralShape::Rod{
-    radius: length(1.0), 
-    center_of_gravity: point(0.0, 1.0)
-};
+use structural_shapes::StructuralShape;
+let x = StructuralShape::new_rod(1.0).with_cog(0.0, 1.0);
 println!("cross sectional area: {:?}", x.area().value);
 println!("moment of inertia: {:?}", x.moi_x().value);
 ```
 
 You can also create composite shapes that are composed of more than one primitive:
 ```rust
-use structural_shapes::{CompositeShape, StructuralShape, point, length};
-let mut x = CompositeShape::new()
-    .add(StructuralShape::Rod {
-        radius: length(2.0),
-        center_of_gravity: point(2.0, 0.0),
-    })
-    .add(StructuralShape::Rod {
-        radius: length(2.0),
-        center_of_gravity: point(-2.0, 0.0),
-    });
+use structural_shapes::{CompositeShape, StructuralShape};
+let x = CompositeShape::new()
+    .add(StructuralShape::new_rod(2.0).with_cog(2.0, 0.0))
+    .add(StructuralShape::new_rod(2.0).with_cog(-2.0, 0.0));
 println!("cross sectional area: {:?}", x.area().value);
 println!("moment of inertia: {:?}", x.moi_x().value);
 ```
