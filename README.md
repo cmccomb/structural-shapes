@@ -18,7 +18,8 @@ Here are some basic examples of usage
 use structural_shapes::StructuralShape;
 let x = StructuralShape::new_rod(1.0).with_cog(0.0, 1.0);
 println!("cross sectional area: {:?}", x.area().value);
-println!("moment of inertia: {:?}", x.moi_x().value);
+println!("area moment of inertia: {:?}", x.moi_x().value);
+println!("polar moment of inertia: {:?}", x.polar_moi().value);
 ```
 
 You can also create composite shapes that are composed of more than one primitive:
@@ -28,5 +29,6 @@ let x = CompositeShape::new()
     .add(StructuralShape::new_rod(2.0).with_cog(2.0, 0.0))
     .add(StructuralShape::new_rod(2.0).with_cog(-2.0, 0.0));
 println!("cross sectional area: {:?}", x.area().value);
-println!("moment of inertia: {:?}", x.moi_x().value);
+println!("area moment of inertia: {:?}", x.moi_x().value);
+println!("polar moment of inertia: {:?}", x.polar_moi().value);
 ```

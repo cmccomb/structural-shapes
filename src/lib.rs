@@ -1,6 +1,5 @@
 #![warn(clippy::all)]
 #![warn(missing_docs)]
-#![warn(rustdoc::missing_doc_code_examples)]
 #![warn(clippy::missing_docs_in_private_items)]
 #![doc = include_str!("../README.md")]
 
@@ -11,19 +10,11 @@ use uom::si::{
     length::meter,
     {Quantity, ISQ, SI},
 };
-type Moment = Quantity<ISQ<P4, Z0, Z0, Z0, Z0, Z0, Z0>, SI<f64>, f64>;
+type SecondAreaMomentofInertia = Quantity<ISQ<P4, Z0, Z0, Z0, Z0, Z0, Z0>, SI<f64>, f64>;
 
 /// A helper function supporting conversion of floating point numbers to meters
-pub fn length<T: Float>(l: T) -> Length {
+pub fn meters<T: Float>(l: T) -> Length {
     Length::new::<meter>(NumCast::from(l).expect("The input must be castable to a float."))
-}
-
-/// A helper function supporting conversion of floating point points to length tuples
-pub fn point<T: Float>(p0: T, p1: T) -> (Length, Length) {
-    (
-        Length::new::<meter>(NumCast::from(p0).expect("The input must be castable to a float.")),
-        Length::new::<meter>(NumCast::from(p1).expect("The input must be castable to a float.")),
-    )
 }
 
 /// This enum contains different structural shapes
@@ -89,8 +80,8 @@ impl StructuralShape {
     /// ```
     pub fn new_rod(radius: f64) -> StructuralShape {
         StructuralShape::Rod {
-            radius: length(radius),
-            center_of_gravity: point(0.0, 0.0),
+            radius: meters(radius),
+            center_of_gravity: (meters(0.0), meters(0.0)),
         }
     }
 
@@ -101,9 +92,9 @@ impl StructuralShape {
     /// ```
     pub fn new_pipe(radius: f64, thickness: f64) -> StructuralShape {
         StructuralShape::Pipe {
-            outer_radius: length(radius),
-            thickness: length(thickness),
-            center_of_gravity: point(0.0, 0.0),
+            outer_radius: meters(radius),
+            thickness: meters(thickness),
+            center_of_gravity: (meters(0.0), meters(0.0)),
         }
     }
 
@@ -114,9 +105,9 @@ impl StructuralShape {
     /// ```
     pub fn new_rectangle(height: f64, width: f64) -> StructuralShape {
         StructuralShape::Rectangle {
-            width: length(width),
-            height: length(height),
-            center_of_gravity: point(0.0, 0.0),
+            width: meters(width),
+            height: meters(height),
+            center_of_gravity: (meters(0.0), meters(0.0)),
         }
     }
 
@@ -127,10 +118,10 @@ impl StructuralShape {
     /// ```
     pub fn new_boxbeam(height: f64, width: f64, thickness: f64) -> StructuralShape {
         StructuralShape::BoxBeam {
-            width: length(width),
-            height: length(height),
-            thickness: length(thickness),
-            center_of_gravity: point(0.0, 0.0),
+            width: meters(width),
+            height: meters(height),
+            thickness: meters(thickness),
+            center_of_gravity: (meters(0.0), meters(0.0)),
         }
     }
 
@@ -146,11 +137,11 @@ impl StructuralShape {
         flange_thickness: f64,
     ) -> StructuralShape {
         StructuralShape::IBeam {
-            width: length(width),
-            height: length(height),
-            web_thickness: length(web_thickness),
-            center_of_gravity: point(0.0, 0.0),
-            flange_thickness: length(flange_thickness),
+            width: meters(width),
+            height: meters(height),
+            web_thickness: meters(web_thickness),
+            center_of_gravity: (meters(0.0), meters(0.0)),
+            flange_thickness: meters(flange_thickness),
         }
     }
 
@@ -160,7 +151,7 @@ impl StructuralShape {
     /// let shape = StructuralShape::new_rod(2.0);
     /// let moi = shape.moi_x();
     /// ```
-    pub fn moi_x(&self) -> Moment {
+    pub fn moi_x(&self) -> SecondAreaMomentofInertia {
         match *self {
             StructuralShape::Pipe {
                 outer_radius,
@@ -223,6 +214,7 @@ impl StructuralShape {
                     + self.area() * center_of_gravity.0 * center_of_gravity.0
             }
         }
+        .into()
     }
 
     /// This function returns the moment of inertia of hte structural shape around the y-axis
@@ -231,7 +223,7 @@ impl StructuralShape {
     /// let shape = StructuralShape::new_rod(2.0);
     /// let area = shape.moi_y();
     /// ```
-    pub fn moi_y(&self) -> Moment {
+    pub fn moi_y(&self) -> SecondAreaMomentofInertia {
         match *self {
             StructuralShape::Pipe {
                 outer_radius,
@@ -288,6 +280,16 @@ impl StructuralShape {
         }
     }
 
+    /// This function returns the polar moment of inertia of the composite shape about the origin.
+    /// ```
+    /// # use structural_shapes::StructuralShape;
+    /// let shape = StructuralShape::new_rod(2.0);
+    /// let area = shape.polar_moi();
+    /// ```
+    pub fn polar_moi(&self) -> SecondAreaMomentofInertia {
+        self.moi_x() + self.moi_y()
+    }
+
     /// This function returns the cross-sectional area of the structural shape
     /// ```
     /// # use structural_shapes::StructuralShape;
@@ -330,7 +332,7 @@ impl StructuralShape {
     /// let moi = shape.moi_x();
     /// ```
     pub fn with_cog(&mut self, x: f64, y: f64) -> StructuralShape {
-        self.set_cog((length(x), length(y)));
+        self.set_cog((meters(x), meters(y)));
         self.clone()
     }
 
@@ -454,12 +456,16 @@ impl CompositeShape {
     }
 
     /// This function returns the moment of inertia of the composite shape around the x-axis
-    pub fn moi_x(&self) -> Moment {
+    pub fn moi_x(&self) -> SecondAreaMomentofInertia {
         self.shapes.iter().map(|x| (x.0 as f64) * x.1.moi_x()).sum()
     }
     /// This function returns the moment of inertia of the composite shape around the y-axis
-    pub fn moi_y(&self) -> Moment {
+    pub fn moi_y(&self) -> SecondAreaMomentofInertia {
         self.shapes.iter().map(|x| (x.0 as f64) * x.1.moi_y()).sum()
+    }
+    /// This function returns the polar moment of inertia of the composite shape around the origin.
+    pub fn polar_moi(&self) -> SecondAreaMomentofInertia {
+        self.moi_x() + self.moi_y()
     }
     /// This function returns the area of the composite shape
     pub fn area(&self) -> Area {
