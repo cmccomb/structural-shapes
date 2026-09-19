@@ -39,14 +39,11 @@ structural-shapes = { git = "https://github.com/cmccomb/structural-shapes", feat
 ```
 
 ```rust
-# #[cfg(feature = "aisc")]
-# {
 use structural_shapes::AiscSection;
 
 let beam = AiscSection::W12X26;
 let sx = beam.elastic_section_modulus_x();
 let j = beam.torsional_constant();
-# }
 ```
 
 Catalog properties include centroidal moments, section moduli, radii of gyration,

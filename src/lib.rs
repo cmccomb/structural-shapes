@@ -1,7 +1,9 @@
 #![warn(clippy::all)]
 #![warn(missing_docs)]
 #![warn(clippy::missing_docs_in_private_items)]
-#![doc = include_str!("../README.md")]
+// Always display the README; test its optional catalog example when `aisc` is enabled.
+// CI runs doctests with all features as well as without default features.
+#![cfg_attr(any(not(doctest), feature = "aisc"), doc = include_str!("../README.md"))]
 
 mod open_sections;
 mod section_mechanics;
