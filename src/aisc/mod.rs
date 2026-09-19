@@ -33,6 +33,28 @@ pub const SOURCE_URL: &str = "https://cloud.aisc.org/biggie_bin/aisc-shapes-data
 pub enum SectionFamily {
     /// W section with parallel flanges.
     WideFlange,
+    /// M section (miscellaneous beam).
+    MiscellaneousBeam,
+    /// S section (American Standard beam).
+    AmericanStandardBeam,
+    /// HP bearing pile.
+    BearingPile,
+    /// C section (American Standard channel).
+    AmericanStandardChannel,
+    /// MC section (miscellaneous channel).
+    MiscellaneousChannel,
+    /// Single L section.
+    Angle,
+    /// WT tee cut from a W section.
+    WideFlangeTee,
+    /// MT tee cut from an M section.
+    MiscellaneousTee,
+    /// ST tee cut from an S section.
+    AmericanStandardTee,
+    /// Two back-to-back angles, including the catalog's spacing/orientation variants.
+    DoubleAngle,
+    /// Standard, extra-strong, or double-extra-strong pipe.
+    Pipe,
     /// Square hollow structural section.
     SquareHollow,
     /// Rectangular hollow structural section.
@@ -45,6 +67,59 @@ pub enum SectionFamily {
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum SectionDimensions {
+    /// M, S, or HP beam dimensions; idealization treats flanges as uniform thickness.
+    IBeam {
+        /// Overall depth (`d`).
+        depth: Length,
+        /// Flange width (`bf`).
+        flange_width: Length,
+        /// Web thickness (`tw`).
+        web_thickness: Length,
+        /// Tabulated flange thickness (`tf`); taper is not represented.
+        flange_thickness: Length,
+    },
+    /// C or MC channel dimensions; idealization omits flange taper.
+    Channel {
+        /// Overall vertical depth (`d`).
+        depth: Length,
+        /// Overall horizontal flange width (`bf`).
+        flange_width: Length,
+        /// Web thickness (`tw`).
+        web_thickness: Length,
+        /// Tabulated flange thickness (`tf`).
+        flange_thickness: Length,
+    },
+    /// WT, MT, or ST tee dimensions; idealization omits flange taper.
+    Tee {
+        /// Overall depth, including the flange (`d`).
+        depth: Length,
+        /// Flange width (`bf`).
+        flange_width: Length,
+        /// Stem thickness (`tw`).
+        web_thickness: Length,
+        /// Tabulated flange thickness (`tf`).
+        flange_thickness: Length,
+    },
+    /// Single-angle dimensions in the AISC orientation (long leg vertical).
+    Angle {
+        /// Overall vertical leg dimension (`b`).
+        vertical_leg: Length,
+        /// Overall horizontal leg dimension (`d`).
+        horizontal_leg: Length,
+        /// Leg thickness (`t`).
+        thickness: Length,
+    },
+    /// Double-angle dimensions in the designation's back-to-back arrangement.
+    DoubleAngle {
+        /// Vertical leg dimension, matching LLBB/SLBB orientation (`d`).
+        back_to_back_leg: Length,
+        /// Horizontal dimension of each outward leg (`b`).
+        outstanding_leg: Length,
+        /// Leg thickness (`t`).
+        thickness: Length,
+        /// Clear spacing between the backs, decoded from the designation; zero if omitted.
+        gap: Length,
+    },
     /// W section dimensions, excluding fillet geometry.
     WideFlange {
         /// Overall depth (`d`).
@@ -67,7 +142,7 @@ pub enum SectionDimensions {
         /// Design wall thickness (`tdes`), used by the idealized shape.
         design_thickness: Length,
     },
-    /// Round HSS dimensions.
+    /// Round HSS or pipe dimensions.
     HollowRound {
         /// Tabulated outside diameter (`OD`).
         outer_diameter: Length,
@@ -90,7 +165,7 @@ pub struct SectionProperties {
     /// Centroidal y-axis second moment of area.
     moi_y: SecondAreaMomentofInertia,
     /// Saint-Venant torsional constant, distinct from the polar second moment.
-    torsional_constant: SecondAreaMomentofInertia,
+    torsional_constant: Option<SecondAreaMomentofInertia>,
     /// Nominal mass per unit length.
     mass_per_length: LinearMassDensity,
 }
@@ -112,8 +187,9 @@ impl SectionProperties {
     pub fn polar_moi(&self) -> SecondAreaMomentofInertia {
         self.moi_x + self.moi_y
     }
-    /// Published Saint-Venant torsional constant (`J`).
-    pub fn torsional_constant(&self) -> SecondAreaMomentofInertia {
+    /// Published Saint-Venant torsional constant (`J`), or `None` for double angles.
+    /// The source does not tabulate double-angle `J`; it is not inferred or set to zero.
+    pub fn torsional_constant(&self) -> Option<SecondAreaMomentofInertia> {
         self.torsional_constant
     }
     /// Nominal weight-per-length column (`W`), expressed as mass per length.
@@ -130,19 +206,40 @@ struct CatalogEntry {
     edi_designation: &'static str,
     /// Family determining the interpretation of geometry.
     family: SectionFamily,
-    /// Four dimensions in inches; ordering is documented in generated.rs.
-    geometry: [f64; 4],
-    /// W (lb/ft), A (in²), Ix, Iy, J (in⁴), in that order.
-    properties: [f64; 5],
+    /// Unconverted geometry in inches.
+    geometry: RawDimensions,
+    /// W (lb/ft), A (in²), Ix and Iy (in⁴), in that order.
+    properties: [f64; 4],
+    /// Tabulated J in in⁴; missing for double angles.
+    torsional_constant: Option<f64>,
+}
+
+/// Geometry layouts used by the generated source records; all values are inches.
+enum RawDimensions {
+    /// Depth, flange width, web thickness, flange thickness.
+    IBeam([f64; 4]),
+    /// Depth, flange width, web thickness, flange thickness.
+    Channel([f64; 4]),
+    /// Depth, flange width, stem thickness, flange thickness.
+    Tee([f64; 4]),
+    /// Vertical leg, horizontal leg, thickness.
+    Angle([f64; 3]),
+    /// Back-to-back leg, outstanding leg, thickness, clear gap.
+    DoubleAngle([f64; 4]),
+    /// Height, width, nominal thickness, design thickness.
+    HollowRectangle([f64; 4]),
+    /// Outside diameter, nominal thickness, design thickness.
+    HollowRound([f64; 3]),
 }
 
 /// Keep enum identity, enumeration, and record lookup in one generated list.
 macro_rules! catalog {
-    ($($id:ident => ($label:literal, $edi:literal, $family:ident, $geometry:expr, $properties:expr);)*) => {
-        /// A standard W or HSS section from AISC v16.0.
+    ($($id:ident => ($label:literal, $edi:literal, $family:ident, $geometry:expr, $properties:expr, $torsion:expr);)*) => {
+        /// A standard section from the complete AISC v16.0 catalog.
         ///
         /// Variant names follow the US Manual label with `.`, `/`, and `-`
         /// replaced by `_`, e.g. `HSS6X6X1_4` means `HSS6X6X1/4`.
+        /// The leading `2L` is spelled `DoubleAngle`, e.g. `DoubleAngle8X4X1_2LLBB`.
         /// Use `Display`/`FromStr` for persistent names, not integer discriminants.
         #[allow(non_camel_case_types)]
         #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
@@ -163,7 +260,7 @@ macro_rules! catalog {
                     $(Self::$id => CatalogEntry {
                         designation: $label, edi_designation: $edi,
                         family: SectionFamily::$family,
-                        geometry: $geometry, properties: $properties,
+                        geometry: $geometry, properties: $properties, torsional_constant: $torsion,
                     },)*
                 }
             }
@@ -195,40 +292,97 @@ impl AiscSection {
     /// Published dimensions converted to unit-safe lengths.
     pub fn dimensions(self) -> SectionDimensions {
         let entry = self.entry();
-        let [a, b, c, d] = entry.geometry.map(Length::new::<inch>);
-        match entry.family {
-            SectionFamily::WideFlange => SectionDimensions::WideFlange {
-                depth: a,
-                flange_width: b,
-                web_thickness: c,
-                flange_thickness: d,
-            },
-            SectionFamily::SquareHollow | SectionFamily::RectangularHollow => {
-                SectionDimensions::HollowRectangle {
-                    height: a,
-                    width: b,
-                    nominal_thickness: c,
-                    design_thickness: d,
+        match entry.geometry {
+            RawDimensions::IBeam(values) => {
+                let [depth, flange_width, web_thickness, flange_thickness] =
+                    values.map(Length::new::<inch>);
+                if entry.family == SectionFamily::WideFlange {
+                    SectionDimensions::WideFlange {
+                        depth,
+                        flange_width,
+                        web_thickness,
+                        flange_thickness,
+                    }
+                } else {
+                    SectionDimensions::IBeam {
+                        depth,
+                        flange_width,
+                        web_thickness,
+                        flange_thickness,
+                    }
                 }
             }
-            SectionFamily::RoundHollow => SectionDimensions::HollowRound {
-                outer_diameter: a,
-                nominal_thickness: c,
-                design_thickness: d,
-            },
+            RawDimensions::Channel(values) => {
+                let [depth, flange_width, web_thickness, flange_thickness] =
+                    values.map(Length::new::<inch>);
+                SectionDimensions::Channel {
+                    depth,
+                    flange_width,
+                    web_thickness,
+                    flange_thickness,
+                }
+            }
+            RawDimensions::Tee(values) => {
+                let [depth, flange_width, web_thickness, flange_thickness] =
+                    values.map(Length::new::<inch>);
+                SectionDimensions::Tee {
+                    depth,
+                    flange_width,
+                    web_thickness,
+                    flange_thickness,
+                }
+            }
+            RawDimensions::Angle(values) => {
+                let [vertical_leg, horizontal_leg, thickness] = values.map(Length::new::<inch>);
+                SectionDimensions::Angle {
+                    vertical_leg,
+                    horizontal_leg,
+                    thickness,
+                }
+            }
+            RawDimensions::DoubleAngle(values) => {
+                let [back_to_back_leg, outstanding_leg, thickness, gap] =
+                    values.map(Length::new::<inch>);
+                SectionDimensions::DoubleAngle {
+                    back_to_back_leg,
+                    outstanding_leg,
+                    thickness,
+                    gap,
+                }
+            }
+            RawDimensions::HollowRectangle(values) => {
+                let [height, width, nominal_thickness, design_thickness] =
+                    values.map(Length::new::<inch>);
+                SectionDimensions::HollowRectangle {
+                    height,
+                    width,
+                    nominal_thickness,
+                    design_thickness,
+                }
+            }
+            RawDimensions::HollowRound(values) => {
+                let [outer_diameter, nominal_thickness, design_thickness] =
+                    values.map(Length::new::<inch>);
+                SectionDimensions::HollowRound {
+                    outer_diameter,
+                    nominal_thickness,
+                    design_thickness,
+                }
+            }
         }
     }
 
     /// Published centroidal properties, independent of idealized geometry.
     pub fn properties(self) -> SectionProperties {
-        let [weight, area, ix, iy, j] = self.entry().properties;
+        let entry = self.entry();
+        let [weight, area, ix, iy] = entry.properties;
         let one_inch = Length::new::<inch>(1.0);
         let fourth_power: SecondAreaMomentofInertia = one_inch * one_inch * one_inch * one_inch;
         SectionProperties {
             area: Area::new::<square_inch>(area),
             moi_x: fourth_power * ix,
             moi_y: fourth_power * iy,
-            torsional_constant: fourth_power * j,
+            torsional_constant: entry.torsional_constant.map(|j| fourth_power * j),
             // Exact international pound and foot conversions; retain source precision.
             mass_per_length: LinearMassDensity::new::<kilogram_per_meter>(
                 weight * 0.453_592_37 / 0.3048,
@@ -252,8 +406,8 @@ impl AiscSection {
     pub fn polar_moi(self) -> SecondAreaMomentofInertia {
         self.properties().polar_moi()
     }
-    /// Published Saint-Venant torsional constant (`J`).
-    pub fn torsional_constant(self) -> SecondAreaMomentofInertia {
+    /// Published Saint-Venant torsional constant (`J`), or `None` for double angles.
+    pub fn torsional_constant(self) -> Option<SecondAreaMomentofInertia> {
         self.properties().torsional_constant()
     }
     /// Nominal mass per unit length.
@@ -261,14 +415,23 @@ impl AiscSection {
         self.properties().mass_per_length()
     }
 
-    /// Approximate geometry centered at the origin, using HSS design thickness.
+    /// Approximate geometry centered at its geometric centroid, using HSS/pipe design thickness.
     ///
-    /// W fillets and rectangular HSS corner radii are omitted. Source rounding
-    /// also affects round HSS. Calculated properties need not equal the catalog.
+    /// Fillets, toe radii, rectangular HSS corner radii, and flange taper are
+    /// omitted. Source rounding also affects the geometry. Calculated properties
+    /// and centroid locations need not equal the catalog. Single angles have
+    /// their longer leg vertical; double angles honor their designation's gap
+    /// and back-to-back orientation. Angles use geometric, not principal, axes.
     /// This explicit conversion discards the catalog identity and tabulated values.
     pub fn idealized_shape(self) -> StructuralShape {
         match self.dimensions() {
             SectionDimensions::WideFlange {
+                depth,
+                flange_width,
+                web_thickness,
+                flange_thickness,
+            }
+            | SectionDimensions::IBeam {
                 depth,
                 flange_width,
                 web_thickness,
@@ -278,6 +441,48 @@ impl AiscSection {
                 flange_width.value,
                 web_thickness.value,
                 flange_thickness.value,
+            ),
+            SectionDimensions::Channel {
+                depth,
+                flange_width,
+                web_thickness,
+                flange_thickness,
+            } => StructuralShape::new_channel(
+                depth.value,
+                flange_width.value,
+                web_thickness.value,
+                flange_thickness.value,
+            ),
+            SectionDimensions::Tee {
+                depth,
+                flange_width,
+                web_thickness,
+                flange_thickness,
+            } => StructuralShape::new_tee(
+                depth.value,
+                flange_width.value,
+                web_thickness.value,
+                flange_thickness.value,
+            ),
+            SectionDimensions::Angle {
+                vertical_leg,
+                horizontal_leg,
+                thickness,
+            } => StructuralShape::new_angle(
+                vertical_leg.value,
+                horizontal_leg.value,
+                thickness.value,
+            ),
+            SectionDimensions::DoubleAngle {
+                back_to_back_leg,
+                outstanding_leg,
+                thickness,
+                gap,
+            } => StructuralShape::new_double_angle(
+                back_to_back_leg.value,
+                outstanding_leg.value,
+                thickness.value,
+                gap.value,
             ),
             SectionDimensions::HollowRectangle {
                 height,
@@ -300,7 +505,7 @@ impl fmt::Display for AiscSection {
     }
 }
 
-/// A name that is not in the supported W/HSS catalog.
+/// A name that is not in the AISC v16.0 catalog.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ParseAiscSectionError {
     /// Original, unmodified input to aid diagnostics.
@@ -316,7 +521,7 @@ impl ParseAiscSectionError {
 
 impl fmt::Display for ParseAiscSectionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "unknown AISC W/HSS section: {:?}", self.input)
+        write!(f, "unknown AISC section: {:?}", self.input)
     }
 }
 
@@ -326,7 +531,7 @@ impl FromStr for AiscSection {
     type Err = ParseAiscSectionError;
 
     /// Accept US Manual or EDI labels, ignoring ASCII case and outer whitespace.
-    /// Other aliases, metric designations, and unsupported families are rejected.
+    /// Other aliases, metric designations, and unknown sections are rejected.
     fn from_str(input: &str) -> Result<Self, Self::Err> {
         let name = input.trim();
         Self::iter()

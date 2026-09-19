@@ -51,6 +51,10 @@ fn all_primitives_obey_parallel_axis_theorem() {
         StructuralShape::new_rectangle(0.8, 0.3),
         StructuralShape::new_boxbeam(0.8, 0.3, 0.02),
         StructuralShape::new_ibeam(0.8, 0.3, 0.02, 0.03),
+        StructuralShape::new_channel(0.8, 0.3, 0.02, 0.03),
+        StructuralShape::new_tee(0.8, 0.3, 0.02, 0.03),
+        StructuralShape::new_angle(0.8, 0.3, 0.02),
+        StructuralShape::new_double_angle(0.8, 0.3, 0.02, 0.015),
     ] {
         for (x, y) in [(2.0, 0.0), (0.0, 3.0), (-2.0, 3.0)] {
             let mut moved = shape;
