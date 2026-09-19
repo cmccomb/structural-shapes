@@ -16,7 +16,19 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
-    - name: Build
-      run: cargo build --verbose
-    - name: Run tests
-      run: cargo test --verbose
+    - name: Check generated catalog
+      run: python3 scripts/generate_aisc.py --check
+    - name: Check formatting
+      run: cargo fmt --check
+    - name: Lint all features
+      run: cargo clippy --all-targets --all-features -- -D warnings
+    - name: Check documentation
+      run: cargo doc --no-deps --all-features
+      env:
+        RUSTDOCFLAGS: -D warnings
+    - name: Test default features
+      run: cargo test --verbose --no-default-features
+    - name: Test catalog
+      run: cargo test --verbose --all-features
+    - name: Run catalog selection example
+      run: cargo run --example select_section --features aisc

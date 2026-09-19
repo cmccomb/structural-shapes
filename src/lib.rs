@@ -10,7 +10,15 @@ use uom::si::{
     length::meter,
     {Quantity, ISQ, SI},
 };
-type SecondAreaMomentofInertia = Quantity<ISQ<P4, Z0, Z0, Z0, Z0, Z0, Z0>, SI<f64>, f64>;
+/// Second moment of area, stored in meters to the fourth power.
+pub type SecondAreaMomentofInertia = Quantity<ISQ<P4, Z0, Z0, Z0, Z0, Z0, Z0>, SI<f64>, f64>;
+
+#[cfg(feature = "aisc")]
+pub mod aisc;
+#[cfg(feature = "aisc")]
+pub use aisc::{
+    AiscSection, ParseAiscSectionError, SectionDimensions, SectionFamily, SectionProperties,
+};
 
 /// A helper function supporting conversion of floating point numbers to meters
 pub fn meters<T: Float>(l: T) -> Length {
@@ -145,7 +153,7 @@ impl StructuralShape {
         }
     }
 
-    /// This function returns the moment of inertia of the structural shape around the x-axis
+    /// Second moment about the horizontal x-axis through the origin, including `A * y²`.
     /// ```
     /// # use structural_shapes::{StructuralShape};
     /// let shape = StructuralShape::new_rod(2.0);
@@ -180,7 +188,7 @@ impl StructuralShape {
                 flange_thickness,
                 center_of_gravity,
             )
-            .moi_y(),
+            .moi_x(),
             StructuralShape::BoxBeam {
                 width,
                 height,
@@ -203,7 +211,7 @@ impl StructuralShape {
                 center_of_gravity,
             } => {
                 std::f64::consts::PI * radius * radius * radius * radius / 4.0
-                    + self.area() * center_of_gravity.0 * center_of_gravity.0
+                    + self.area() * center_of_gravity.1 * center_of_gravity.1
             }
             StructuralShape::Rectangle {
                 width,
@@ -211,13 +219,12 @@ impl StructuralShape {
                 center_of_gravity,
             } => {
                 width * height * height * height / 12.0
-                    + self.area() * center_of_gravity.0 * center_of_gravity.0
+                    + self.area() * center_of_gravity.1 * center_of_gravity.1
             }
         }
-        .into()
     }
 
-    /// This function returns the moment of inertia of hte structural shape around the y-axis
+    /// Second moment about the vertical y-axis through the origin, including `A * x²`.
     /// ```
     /// # use structural_shapes::StructuralShape;
     /// let shape = StructuralShape::new_rod(2.0);
@@ -267,15 +274,15 @@ impl StructuralShape {
                 center_of_gravity,
             } => {
                 std::f64::consts::PI * radius * radius * radius * radius / 4.0
-                    + self.area() * center_of_gravity.1 * center_of_gravity.1
+                    + self.area() * center_of_gravity.0 * center_of_gravity.0
             }
             StructuralShape::Rectangle {
                 width,
                 height,
                 center_of_gravity,
             } => {
-                width * height * height * height / 12.0
-                    + self.area() * center_of_gravity.1 * center_of_gravity.1
+                height * width * width * width / 12.0
+                    + self.area() * center_of_gravity.0 * center_of_gravity.0
             }
         }
     }
@@ -333,7 +340,7 @@ impl StructuralShape {
     /// ```
     pub fn with_cog(&mut self, x: f64, y: f64) -> StructuralShape {
         self.set_cog((meters(x), meters(y)));
-        self.clone()
+        *self
     }
 
     /// A function to return the current center of gravity for a shape

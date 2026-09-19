@@ -106,7 +106,7 @@ mod tests {
         let y = StructuralShape::Rectangle {
             width: meters(2.0),
             height: meters(2.0),
-            center_of_gravity:  (meters(0.0), meters(0.0)),
+            center_of_gravity: (meters(0.0), meters(0.0)),
         };
         assert_eq!(x.moi_x(), y.moi_x());
         assert_eq!(x.moi_y(), y.moi_y());
@@ -121,7 +121,7 @@ mod tests {
             })
             .add(StructuralShape::Rod {
                 radius: meters(2.0),
-                center_of_gravity:  (meters(-3.0), meters(0.0)),
+                center_of_gravity: (meters(-3.0), meters(0.0)),
             });
         println!("moi-x: {}", x.moi_x().value);
         println!("moi-y: {}", x.moi_y().value);
@@ -134,11 +134,11 @@ mod tests {
         let mut x = CompositeShape::new();
         x.add(StructuralShape::Rod {
             radius: meters(2.0),
-            center_of_gravity:  (meters(3.0), meters(0.0)),
+            center_of_gravity: (meters(3.0), meters(0.0)),
         });
         x.add(StructuralShape::Rod {
             radius: meters(2.0),
-            center_of_gravity:  (meters(-3.0), meters(0.0)),
+            center_of_gravity: (meters(-3.0), meters(0.0)),
         });
         println!("moi-x: {}", x.moi_x().value);
         println!("moi-y: {}", x.moi_y().value);
@@ -152,7 +152,7 @@ mod tests {
             .add(StructuralShape::Rectangle {
                 width: meters(1.0),
                 height: meters(1.0),
-                center_of_gravity:  (meters(2.0), meters(1.5)),
+                center_of_gravity: (meters(2.0), meters(1.5)),
             })
             .sub(StructuralShape::Rectangle {
                 width: meters(0.9),
