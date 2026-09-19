@@ -30,12 +30,11 @@ Use `torsional_constant()` for supported torsion calculations.
 ## Standard steel sections
 
 Enable `aisc` for 2,299 sections from the AISC Shapes Database v16.0, including
-beams, channels, angles, tees, double angles, HSS, and pipe. The catalog is
-available from Git and is not included in the published 0.2.3 release:
+beams, channels, angles, tees, double angles, HSS, and pipe:
 
 ```toml
 [dependencies]
-structural-shapes = { git = "https://github.com/cmccomb/structural-shapes", features = ["aisc"] }
+structural-shapes = { version = "0.3", features = ["aisc"] }
 ```
 
 ```rust
