@@ -23,6 +23,14 @@ println!("area moment of inertia: {:?}", x.moi_x().value);
 println!("polar moment of inertia: {:?}", x.polar_moi().value);
 ```
 
+`polar_moi()` means the polar **second moment of area**, `Ix + Iy`, about the
+origin. It is generally not the Saint-Venant torsional constant `J`. For circular
+rods and concentric circular pipes, `J` equals the **centroidal** polar moment;
+moving a shape changes its moments about the origin but does not change `J`.
+`StructuralShape::torsional_constant()` returns the exact circular result for
+rods/pipes and `None` for other custom shapes. No generic torsion formula is inferred.
+The circular-shaft relation `tau = T*r/J` must not be applied to arbitrary sections.
+
 You can also create composite shapes that are composed of more than one primitive:
 ```rust
 use structural_shapes::{CompositeShape, StructuralShape};
@@ -56,6 +64,10 @@ use structural_shapes::{AiscSection, SectionFamily};
 let beam = AiscSection::W12X26;
 let area = beam.area();
 let ix = beam.moi_x();
+let sx = beam.elastic_section_modulus_x();
+let zx = beam.plastic_section_modulus_x();
+let rx = beam.radius_of_gyration_x();
+let cw = beam.warping_constant().unwrap();
 let dimensions = beam.dimensions();
 assert_eq!(beam.family(), SectionFamily::WideFlange);
 assert_eq!("w12x26".parse::<AiscSection>()?, beam);
@@ -92,11 +104,39 @@ whitespace. This includes pipe schedule aliases such as `Pipe24SCH20` for
 and iteration order are not stable identifiers. The public enums are
 `#[non_exhaustive]` so later catalogs can add sections and families.
 
-`properties()` returns published area, centroidal inertias, optional torsional constant,
-and mass per length as unit-safe quantities. `dimensions()` distinguishes nominal
+`properties()` returns area, centroidal inertias, section moduli, radii of gyration,
+torsion/warping properties, and mass per length as unit-safe quantities.
+The getters are available on both `AiscSection` and `SectionProperties`:
+
+| Source property | Getter | SI dimension |
+| --- | --- | --- |
+| Sx / Sy | `elastic_section_modulus_x()` / `elastic_section_modulus_y()` | m³ |
+| Zx / Zy | `plastic_section_modulus_x()` / `plastic_section_modulus_y()` | m³ |
+| rx / ry | `radius_of_gyration_x()` / `radius_of_gyration_y()` | m |
+| J | `torsional_constant()` | m⁴, optional |
+| Cw | `warping_constant()` | m⁶, optional |
+| HSS C | `torsional_section_modulus()` | m³, optional |
+| Channel eo | `shear_center_distance()` | m, optional |
+| rts | `effective_radius_of_gyration()` | m, optional |
+| ho | `flange_centroid_distance()` | m, optional |
+
+Tabulated S, Z, and r are preserved rather than recomputed from rounded dimensions
+or inertias. S is not generally I divided by half the overall depth for asymmetric
+sections. Channel `eo` is measured from the AISC-designated edge, **not** from the
+centroid. The angle principal-axis property `Iw` (m⁴) is distinct from `Cw` (m⁶).
+
+`dimensions()` distinguishes nominal
 and design HSS/pipe wall thickness. `torsional_constant()` returns `Some(J)` where
 tabulated, and `None` for all double angles; missing values are never replaced
-with zero or an inferred value. `polar_moi()` is `Ix + Iy`, not `J`.
+with zero or an inferred value. Other optional properties similarly retain missing
+data as `None`. `polar_moi()` is `Ix + Iy`, generally not `J`.
+
+`product_moi()` uses `Ixy = integral(x*y dA)` about the centroid. It is zero by
+symmetry except for single angles. For those, it is **derived** from the rounded
+published `Iw`, `Iz`, and `tan(alpha)` values, with the vertical leg on the left
+and bottom leg pointing right (negative Ixy). Reflecting that orientation reverses
+the sign. `area_moments()` combines it with tabulated Ix/Iy; principal moments
+computed from this tensor can differ slightly from published Iw/Iz through rounding.
 
 Published properties remain separate from `idealized_shape()`, which creates a
 `StructuralShape` centered at its own geometric centroid. It uses HSS/pipe design
@@ -135,9 +175,32 @@ centered at their geometric centroid and support `with_cog()` and composition.
 
 For custom geometry, x is horizontal and y is vertical. `moi_x()` and `moi_y()`
 are about the axes through the origin, including the parallel-axis terms
-`A * y²` and `A * x²`, respectively. Call `CompositeShape::update_cog()` to
-center a composite before requesting centroidal values. Catalog properties
-are always about their centroidal axes.
+`A * y²` and `A * x²`, respectively. `product_moi()` includes `A * x * y`.
+`area_moments()` groups these three values. `centroidal_area_moments()` provides
+centroidal values without moving the shape or composite. The composite version
+returns `None` when its centroid is undefined; `try_calculate_cog()` also exposes
+that check directly. Signed composite sums do not perform Boolean geometry:
+overlapping additions double-count area, and subtraction does not clip shapes.
+Catalog properties are always about their centroidal axes.
+
+```rust
+use structural_shapes::StructuralShape;
+
+let angle = StructuralShape::new_angle(0.08, 0.04, 0.005).with_cog(2.0, -1.0);
+let moments = angle.centroidal_area_moments();
+assert!(moments.product_moi().value < 0.0);
+let (major, minor) = moments.principal_moments();
+let rotation = moments.principal_axis_angle().unwrap();
+let principal = moments.rotated(rotation);
+assert!(principal.product_moi().value.abs() < 1e-18);
+let (rx, ry) = angle.radii_of_gyration(); // Centroidal and independent of position.
+```
+
+Axis rotations are counterclockwise with the shape fixed. Principal moments are
+returned as `(major, minor)`; the principal-axis angle points to the major-moment
+axis and is `None` when all axes have the same moment (e.g. a centered circle).
+Custom-geometry methods continue to assume valid dimensions. The checked
+composite centroid validates its resulting area/coordinates, not shape topology.
 
 This change corrects the prior I-beam x-axis dispatch, rectangle y-axis formula,
 and swapped translation terms. Results for asymmetric or translated custom

@@ -13,7 +13,9 @@
 //! # Ok::<(), structural_shapes::ParseAiscSectionError>(())
 //! ```
 
-use crate::{SecondAreaMomentofInertia, StructuralShape};
+use crate::{
+    AreaMoments, SecondAreaMomentofInertia, SectionModulus, StructuralShape, WarpingConstant,
+};
 use std::{error::Error, fmt, str::FromStr};
 use uom::si::{
     area::square_inch,
@@ -153,7 +155,8 @@ pub enum SectionDimensions {
     },
 }
 
-/// Published section properties converted from US customary columns to SI.
+/// Published section properties converted from US customary columns to SI,
+/// plus a product of inertia derived from the published principal-axis data for angles.
 ///
 /// Returned by value; editing custom geometry never changes these catalog values.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -168,6 +171,22 @@ pub struct SectionProperties {
     torsional_constant: Option<SecondAreaMomentofInertia>,
     /// Nominal mass per unit length.
     mass_per_length: LinearMassDensity,
+    /// Published Sx, Sy, Zx, Zy, respectively.
+    moduli: [SectionModulus; 4],
+    /// Published rx, ry, respectively.
+    radii: [Length; 2],
+    /// Derived centroidal signed product of inertia.
+    product_moi: SecondAreaMomentofInertia,
+    /// Published warping constant Cw (length to the sixth power).
+    warping_constant: Option<WarpingConstant>,
+    /// Published HSS torsional section modulus C (length cubed).
+    torsional_section_modulus: Option<SectionModulus>,
+    /// Published distance eo from the designated edge to the shear center.
+    shear_center_distance: Option<Length>,
+    /// Published effective radius rts.
+    effective_radius_of_gyration: Option<Length>,
+    /// Published distance ho between flange centroids.
+    flange_centroid_distance: Option<Length>,
 }
 
 impl SectionProperties {
@@ -196,6 +215,69 @@ impl SectionProperties {
     pub fn mass_per_length(&self) -> LinearMassDensity {
         self.mass_per_length
     }
+
+    /// Published elastic section modulus Sx; not necessarily Ix divided by half the depth.
+    pub fn elastic_section_modulus_x(&self) -> SectionModulus {
+        self.moduli[0]
+    }
+    /// Published elastic section modulus Sy.
+    pub fn elastic_section_modulus_y(&self) -> SectionModulus {
+        self.moduli[1]
+    }
+    /// Published plastic section modulus Zx.
+    pub fn plastic_section_modulus_x(&self) -> SectionModulus {
+        self.moduli[2]
+    }
+    /// Published plastic section modulus Zy.
+    pub fn plastic_section_modulus_y(&self) -> SectionModulus {
+        self.moduli[3]
+    }
+    /// Published radius of gyration rx; retained rather than recomputed from rounded Ix/A.
+    pub fn radius_of_gyration_x(&self) -> Length {
+        self.radii[0]
+    }
+    /// Published radius of gyration ry; retained rather than recomputed from rounded Iy/A.
+    pub fn radius_of_gyration_y(&self) -> Length {
+        self.radii[1]
+    }
+
+    /// Centroidal product of inertia, with sign `Ixy = integral(x * y dA)`.
+    ///
+    /// Zero by symmetry except for single angles. For angles this is derived as
+    /// `-(Iw - Iz) * tan(alpha) / (1 + tan(alpha)^2)` from rounded published data.
+    /// The long leg points up on the left and the bottom leg points right, as in
+    /// [`AiscSection::idealized_shape`]; reflecting the angle reverses the sign.
+    pub fn product_moi(&self) -> SecondAreaMomentofInertia {
+        self.product_moi
+    }
+
+    /// Centroidal moments with signed Ixy; angle principal moments calculated
+    /// from this tensor may differ slightly from tabulated Iw/Iz due to rounding.
+    pub fn area_moments(&self) -> AreaMoments {
+        AreaMoments::new(self.moi_x, self.moi_y, self.product_moi)
+    }
+    /// Published warping constant Cw (length to the sixth power), where available.
+    /// Missing values remain None, including hollow sections and double angles.
+    pub fn warping_constant(&self) -> Option<WarpingConstant> {
+        self.warping_constant
+    }
+    /// Published HSS torsional section modulus C (length cubed), distinct from J.
+    pub fn torsional_section_modulus(&self) -> Option<SectionModulus> {
+        self.torsional_section_modulus
+    }
+    /// Published channel distance eo from the AISC-designated edge to the shear center.
+    /// This is not a signed offset from the centroid.
+    pub fn shear_center_distance(&self) -> Option<Length> {
+        self.shear_center_distance
+    }
+    /// Published effective radius of gyration rts, where available.
+    pub fn effective_radius_of_gyration(&self) -> Option<Length> {
+        self.effective_radius_of_gyration
+    }
+    /// Published distance ho between flange centroids, where available.
+    pub fn flange_centroid_distance(&self) -> Option<Length> {
+        self.flange_centroid_distance
+    }
 }
 
 /// Unconverted source record, instantiated by the generated catalog.
@@ -208,13 +290,18 @@ struct CatalogEntry {
     family: SectionFamily,
     /// Unconverted geometry in inches.
     geometry: RawDimensions,
-    /// W (lb/ft), A (in²), Ix and Iy (in⁴), in that order.
-    properties: [f64; 4],
+    /// W (lb/ft), A (in²), Ix/Iy (in⁴), Sx/Sy/Zx/Zy (in³), rx/ry (in).
+    properties: [f64; 10],
     /// Tabulated J in in⁴; missing for double angles.
     torsional_constant: Option<f64>,
+    /// Cw (in⁶), C (in³), eo/rts/ho (in), where applicable.
+    stability: [Option<f64>; 5],
+    /// Single-angle Iw/Iz (in⁴) and tan(alpha), where applicable.
+    angle_principal: Option<[f64; 3]>,
 }
 
 /// Geometry layouts used by the generated source records; all values are inches.
+#[derive(Clone, Copy)]
 enum RawDimensions {
     /// Depth, flange width, web thickness, flange thickness.
     IBeam([f64; 4]),
@@ -234,7 +321,7 @@ enum RawDimensions {
 
 /// Keep enum identity, enumeration, and record lookup in one generated list.
 macro_rules! catalog {
-    ($($id:ident => ($label:literal, $edi:literal, $family:ident, $geometry:expr, $properties:expr, $torsion:expr);)*) => {
+    ($($id:ident => ($label:literal, $edi:literal, $family:ident, $geometry:expr, $properties:expr, $torsion:expr, $stability:expr, $principal:expr);)*) => {
         /// A standard section from the complete AISC v16.0 catalog.
         ///
         /// Variant names follow the US Manual label with `.`, `/`, and `-`
@@ -255,12 +342,13 @@ macro_rules! catalog {
             /// Fetch the source record without parsing or allocation.
             // Values such as 3.14 are published measurements, not approximations of pi.
             #[allow(clippy::approx_constant)]
-            fn entry(self) -> CatalogEntry {
+            fn entry(self) -> &'static CatalogEntry {
                 match self {
-                    $(Self::$id => CatalogEntry {
+                    $(Self::$id => &CatalogEntry {
                         designation: $label, edi_designation: $edi,
                         family: SectionFamily::$family,
                         geometry: $geometry, properties: $properties, torsional_constant: $torsion,
+                        stability: $stability, angle_principal: $principal,
                     },)*
                 }
             }
@@ -372,17 +460,31 @@ impl AiscSection {
         }
     }
 
-    /// Published centroidal properties, independent of idealized geometry.
+    /// Published centroidal properties and derived Ixy, independent of idealized geometry.
     pub fn properties(self) -> SectionProperties {
         let entry = self.entry();
-        let [weight, area, ix, iy] = entry.properties;
+        let [weight, area, ix, iy, sx, sy, zx, zy, rx, ry] = entry.properties;
+        let [cw, c, eo, rts, ho] = entry.stability;
         let one_inch = Length::new::<inch>(1.0);
+        let third_power: SectionModulus = one_inch * one_inch * one_inch;
         let fourth_power: SecondAreaMomentofInertia = one_inch * one_inch * one_inch * one_inch;
+        let sixth_power: WarpingConstant = third_power * third_power;
+        let ixy = entry.angle_principal.map_or(0.0, |[iw, iz, tangent]| {
+            -(iw - iz) * tangent / (1.0 + tangent * tangent)
+        });
         SectionProperties {
             area: Area::new::<square_inch>(area),
             moi_x: fourth_power * ix,
             moi_y: fourth_power * iy,
             torsional_constant: entry.torsional_constant.map(|j| fourth_power * j),
+            moduli: [sx, sy, zx, zy].map(|s| third_power * s),
+            radii: [rx, ry].map(|r| one_inch * r),
+            product_moi: fourth_power * ixy,
+            warping_constant: cw.map(|w| sixth_power * w),
+            torsional_section_modulus: c.map(|c| third_power * c),
+            shear_center_distance: eo.map(|e| one_inch * e),
+            effective_radius_of_gyration: rts.map(|r| one_inch * r),
+            flange_centroid_distance: ho.map(|h| one_inch * h),
             // Exact international pound and foot conversions; retain source precision.
             mass_per_length: LinearMassDensity::new::<kilogram_per_meter>(
                 weight * 0.453_592_37 / 0.3048,
@@ -413,6 +515,59 @@ impl AiscSection {
     /// Nominal mass per unit length.
     pub fn mass_per_length(self) -> LinearMassDensity {
         self.properties().mass_per_length()
+    }
+
+    /// Published elastic section modulus Sx.
+    pub fn elastic_section_modulus_x(self) -> SectionModulus {
+        self.properties().elastic_section_modulus_x()
+    }
+    /// Published elastic section modulus Sy.
+    pub fn elastic_section_modulus_y(self) -> SectionModulus {
+        self.properties().elastic_section_modulus_y()
+    }
+    /// Published plastic section modulus Zx.
+    pub fn plastic_section_modulus_x(self) -> SectionModulus {
+        self.properties().plastic_section_modulus_x()
+    }
+    /// Published plastic section modulus Zy.
+    pub fn plastic_section_modulus_y(self) -> SectionModulus {
+        self.properties().plastic_section_modulus_y()
+    }
+    /// Published radius of gyration rx.
+    pub fn radius_of_gyration_x(self) -> Length {
+        self.properties().radius_of_gyration_x()
+    }
+    /// Published radius of gyration ry.
+    pub fn radius_of_gyration_y(self) -> Length {
+        self.properties().radius_of_gyration_y()
+    }
+    /// Signed centroidal Ixy; derived for single angles. See [`SectionProperties::product_moi`].
+    pub fn product_moi(self) -> SecondAreaMomentofInertia {
+        self.properties().product_moi()
+    }
+    /// Centroidal moments, including the derived signed product of inertia.
+    pub fn area_moments(self) -> AreaMoments {
+        self.properties().area_moments()
+    }
+    /// Published warping constant Cw (length to the sixth power), where available.
+    pub fn warping_constant(self) -> Option<WarpingConstant> {
+        self.properties().warping_constant()
+    }
+    /// Published HSS torsional section modulus C (length cubed), distinct from J.
+    pub fn torsional_section_modulus(self) -> Option<SectionModulus> {
+        self.properties().torsional_section_modulus()
+    }
+    /// Channel distance eo from the AISC-designated edge, not from the centroid.
+    pub fn shear_center_distance(self) -> Option<Length> {
+        self.properties().shear_center_distance()
+    }
+    /// Published effective radius of gyration rts, where available.
+    pub fn effective_radius_of_gyration(self) -> Option<Length> {
+        self.properties().effective_radius_of_gyration()
+    }
+    /// Published flange-centroid separation ho, where available.
+    pub fn flange_centroid_distance(self) -> Option<Length> {
+        self.properties().flange_centroid_distance()
     }
 
     /// Approximate geometry centered at its geometric centroid, using HSS/pipe design thickness.

@@ -29,17 +29,153 @@ fn published_reference_values_and_units() {
         beam.moi_x().value + beam.moi_y().value,
     );
     assert!(beam.polar_moi() > beam.torsional_constant().unwrap());
+    close(
+        beam.elastic_section_modulus_x().value,
+        33.4 * 0.0254_f64.powi(3),
+    );
+    close(
+        beam.elastic_section_modulus_y().value,
+        5.34 * 0.0254_f64.powi(3),
+    );
+    close(
+        beam.plastic_section_modulus_x().value,
+        37.2 * 0.0254_f64.powi(3),
+    );
+    close(
+        beam.plastic_section_modulus_y().value,
+        8.17 * 0.0254_f64.powi(3),
+    );
+    close(beam.radius_of_gyration_x().get::<inch>(), 5.17);
+    close(beam.radius_of_gyration_y().get::<inch>(), 1.51);
+    close(
+        beam.warping_constant().unwrap().value,
+        607.0 * 0.0254_f64.powi(6),
+    );
+    close(
+        beam.effective_radius_of_gyration().unwrap().get::<inch>(),
+        1.75,
+    );
+    close(beam.flange_centroid_distance().unwrap().get::<inch>(), 11.8);
+    assert_eq!(beam.shear_center_distance(), None);
+    assert_eq!(beam.torsional_section_modulus(), None);
 
     let square = AiscSection::HSS6X6X1_4;
     close(square.area().get::<square_inch>(), 5.24);
     close(square.moi_x().value, 28.6 * 0.0254_f64.powi(4));
     assert_eq!(square.moi_x(), square.moi_y());
+    close(
+        square.torsional_section_modulus().unwrap().value,
+        15.4 * 0.0254_f64.powi(3),
+    );
+    assert_eq!(square.warping_constant(), None);
+    close(
+        AiscSection::C12X20_7
+            .shear_center_distance()
+            .unwrap()
+            .get::<inch>(),
+        0.87,
+    );
     let rectangle = AiscSection::HSS8X4X1_4;
     close(rectangle.moi_x().value, 42.5 * 0.0254_f64.powi(4));
     close(rectangle.moi_y().value, 14.4 * 0.0254_f64.powi(4));
     let round = AiscSection::HSS6_625X0_280;
     close(round.area().get::<square_inch>(), 5.2);
     close(round.moi_x().value, 26.4 * 0.0254_f64.powi(4));
+}
+
+#[test]
+fn added_properties_preserve_every_source_value_and_missing_cell() {
+    let mut lines = include_str!("../data/aisc-v16.csv").lines();
+    let headers: Vec<_> = lines.next().unwrap().split(',').collect();
+    let mut counts = [0; 5];
+    for line in lines {
+        let columns: Vec<_> = line.split(',').collect();
+        let section: AiscSection = columns[2].parse().unwrap();
+        let source = |key: &str| {
+            let text = columns[headers.iter().position(|h| *h == key).unwrap()];
+            if text.is_empty() {
+                None
+            } else {
+                Some(text.parse::<f64>().unwrap())
+            }
+        };
+        for (key, property, exponent) in [
+            ("Sx", section.elastic_section_modulus_x().value, 3),
+            ("Sy", section.elastic_section_modulus_y().value, 3),
+            ("Zx", section.plastic_section_modulus_x().value, 3),
+            ("Zy", section.plastic_section_modulus_y().value, 3),
+            ("rx", section.radius_of_gyration_x().value, 1),
+            ("ry", section.radius_of_gyration_y().value, 1),
+        ] {
+            close(property, source(key).unwrap() * 0.0254_f64.powi(exponent));
+        }
+        for (i, (key, property, exponent)) in [
+            ("Cw", section.warping_constant().map(|v| v.value), 6),
+            ("C", section.torsional_section_modulus().map(|v| v.value), 3),
+            ("eo", section.shear_center_distance().map(|v| v.value), 1),
+            (
+                "rts",
+                section.effective_radius_of_gyration().map(|v| v.value),
+                1,
+            ),
+            ("ho", section.flange_centroid_distance().map(|v| v.value), 1),
+        ]
+        .iter()
+        .enumerate()
+        {
+            match (property, source(key)) {
+                (Some(actual), Some(expected)) => {
+                    close(*actual, expected * 0.0254_f64.powi(*exponent));
+                    counts[i] += 1;
+                }
+                (None, None) => {}
+                _ => panic!("availability mismatch for {} {}", section, key),
+            }
+        }
+        let moments = section.area_moments();
+        assert_eq!(moments.product_moi(), section.product_moi());
+        if section.family() == SectionFamily::Angle {
+            assert!(section.product_moi().value < 0.0);
+            let (major, minor) = moments.principal_moments();
+            // Independent eigenvalue check against rounded published Iw and Iz.
+            // Source fields are rounded independently, so exact equality is not expected.
+            for (computed, key) in [(major.value, "Iw"), (minor.value, "Iz")] {
+                let expected = source(key).unwrap() * 0.0254_f64.powi(4);
+                assert!(
+                    (computed / expected - 1.0).abs() < 0.02,
+                    "{} {}",
+                    section,
+                    key
+                );
+            }
+        } else {
+            close(section.product_moi().value, 0.0);
+        }
+    }
+    assert_eq!(counts, [895, 714, 72, 427, 427]);
+}
+
+#[test]
+fn single_angle_products_have_explicit_orientation_and_equal_leg_limit() {
+    let equal = AiscSection::L4X4X1_2;
+    close(equal.product_moi().value, -3.27 * 0.0254_f64.powi(4));
+    let (major, minor) = equal.area_moments().principal_moments();
+    close(major.value, 8.79 * 0.0254_f64.powi(4));
+    close(minor.value, 2.25 * 0.0254_f64.powi(4));
+    close(
+        equal
+            .area_moments()
+            .principal_axis_angle()
+            .unwrap()
+            .get::<uom::si::angle::degree>(),
+        45.0,
+    );
+    let unequal = AiscSection::L8X4X1_2;
+    assert!(unequal.idealized_shape().product_moi().value < 0.0);
+    close(
+        unequal.product_moi().value / 0.0254_f64.powi(4),
+        -9.112141328183078,
+    );
 }
 
 #[test]

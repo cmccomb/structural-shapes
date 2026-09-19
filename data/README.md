@@ -47,6 +47,16 @@ as zero. In particular, all 639 double-angle entries have no tabulated `J`.
 | tnom, tdes | HSS/pipe nominal and design thickness | in |
 | Ix, Iy | Centroidal moments about the horizontal/vertical axes | in⁴ |
 | J | Saint-Venant torsional constant, absent for 2L | in⁴ |
+| Sx, Sy | Elastic section moduli | in³ |
+| Zx, Zy | Plastic section moduli | in³ |
+| rx, ry | Radii of gyration | in |
+| Cw | Warping constant, where tabulated | in⁶ |
+| C | HSS torsional section modulus; distinct from J | in³ |
+| eo | Channel distance from AISC-designated edge to shear center | in |
+| rts | Effective radius of gyration, where tabulated | in |
+| ho | Distance between flange centroids, where tabulated | in |
+| Iw, Iz | Single-angle major/minor principal second moments | in⁴ |
+| tan(α) | Tangent of the angle between y and minor principal z for single angles | Dimensionless |
 
 The Rust API converts these values to `uom` SI quantities without recomputing
 the tabulated properties. Conversion uses 0.0254 m/in, 0.3048 m/ft, and
@@ -67,6 +77,20 @@ such as `X1-1/2` are supported and an omitted spacing is zero.
 Double-angle `J` remains `None` in the Rust API. No stiffness or connection
 assumption is made to synthesize a torsional constant. Angle x/y moments are
 centroidal geometric-axis properties, not principal moments.
+
+All 2,299 entries supply Sx, Sy, Zx, Zy, rx, and ry. Optional coverage is 895
+entries for Cw, 714 for HSS C, 72 for channel eo, and 427 each for rts and ho.
+All 137 single angles supply Iw, Iz, and tan(α). The generator checks these
+family-specific availability rules, including rejecting a missing required cell.
+
+Ixy is not a source column. The API derives it for single angles as
+`-(Iw - Iz) * tan(α) / (1 + tan(α)^2)`, with `Ixy = integral(x*y dA)` and the
+same left/up and bottom/right leg orientation as `idealized_shape()`. Other
+families have zero centroidal Ixy by symmetry. This calculation uses published
+principal properties, not sharp-corner geometry. Independently rounded Ix/Iy and
+principal data need not form an exactly consistent tensor; calculated principal
+moments may therefore differ slightly from tabulated Iw/Iz. Tabulated S, Z, r,
+J, Cw, C, eo, rts, and ho are preserved without recomputation.
 
 ## Reproduction
 
