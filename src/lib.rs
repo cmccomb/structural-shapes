@@ -4,9 +4,12 @@
 #![doc = include_str!("../README.md")]
 
 mod open_sections;
+mod section_mechanics;
+
+pub use section_mechanics::AreaMoments;
 
 use num::{Float, NumCast};
-use typenum::{P4, Z0};
+use typenum::{P4, P6, Z0};
 use uom::si::{
     f64::{Area, Length, Volume},
     length::meter,
@@ -14,6 +17,10 @@ use uom::si::{
 };
 /// Second moment of area, stored in meters to the fourth power.
 pub type SecondAreaMomentofInertia = Quantity<ISQ<P4, Z0, Z0, Z0, Z0, Z0, Z0>, SI<f64>, f64>;
+/// Elastic/plastic section modulus (length cubed), stored in cubic meters.
+pub type SectionModulus = Volume;
+/// Warping constant (length to the sixth power), stored in meters to the sixth power.
+pub type WarpingConstant = Quantity<ISQ<P6, Z0, Z0, Z0, Z0, Z0, Z0>, SI<f64>, f64>;
 
 #[cfg(feature = "aisc")]
 pub mod aisc;
@@ -347,7 +354,11 @@ impl StructuralShape {
         }
     }
 
-    /// This function returns the polar moment of inertia of the composite shape about the origin.
+    /// Polar second moment of area about the origin: `Ix + Iy`.
+    ///
+    /// This is generally **not** the Saint-Venant torsional constant `J`.
+    /// For a circular rod or concentric pipe they coincide only about the centroid.
+    /// Use [`Self::torsional_constant`] for supported torsion calculations.
     /// ```
     /// # use structural_shapes::StructuralShape;
     /// let shape = StructuralShape::new_rod(2.0);
@@ -545,7 +556,10 @@ impl CompositeShape {
         self.shapes.push((-1, new_shape));
         self.clone()
     }
-    /// Calculate center of gravity and update COG of members
+    /// Calculate the centroid without moving members.
+    ///
+    /// Empty or zero-area composites have no defined centroid and yield nonfinite coordinates.
+    /// Use [`Self::try_calculate_cog`] to check for a finite positive net area.
     pub fn calculate_cog(&self) -> (Length, Length) {
         let area = self.area();
         let area_times_cx: Volume = self
@@ -586,7 +600,8 @@ impl CompositeShape {
     pub fn moi_y(&self) -> SecondAreaMomentofInertia {
         self.shapes.iter().map(|x| (x.0 as f64) * x.1.moi_y()).sum()
     }
-    /// This function returns the polar moment of inertia of the composite shape around the origin.
+    /// Polar second moment of area about the origin: `Ix + Iy`, generally not `J`.
+    /// Torsional constants cannot in general be added/subtracted like area moments.
     pub fn polar_moi(&self) -> SecondAreaMomentofInertia {
         self.moi_x() + self.moi_y()
     }

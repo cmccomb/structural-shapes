@@ -40,6 +40,19 @@ class CatalogValidationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Ambiguous designation"):
             catalog.generate(output.getvalue())
 
+    def test_optional_properties_require_the_applicable_family_data(self):
+        for field, typ in [("Cw", "W"), ("C", "HSS"), ("eo", "C"), ("Iw", "L")]:
+            row = {"Type": typ, "AISC_Manual_Label": "test", field: ""}
+            with self.subTest(field=field), self.assertRaises((ValueError, InvalidOperation)):
+                catalog.optional_number(row, field)
+            row[field] = "1.25"
+            self.assertEqual(catalog.optional_number(row, field), "Some(1.25)")
+            row["Type"] = "2L"
+            with self.assertRaisesRegex(ValueError, "Unexpected"):
+                catalog.optional_number(row, field)
+            row[field] = ""
+            self.assertEqual(catalog.optional_number(row, field), "None")
+
 
 if __name__ == "__main__":
     unittest.main()

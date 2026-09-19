@@ -10,9 +10,10 @@ fn close(actual: f64, expected: f64) {
 }
 
 // Independent boundary integration, rather than the implementation's rectangle decomposition.
-fn polygon_properties(vertices: &[(f64, f64)]) -> (f64, f64, f64, f64) {
+fn polygon_properties(vertices: &[(f64, f64)]) -> (f64, f64, f64, f64, f64) {
     let (mut twice_area, mut cx_numerator, mut cy_numerator, mut ix12, mut iy12) =
         (0.0, 0.0, 0.0, 0.0, 0.0);
+    let mut ixy24 = 0.0;
     for (i, &(x, y)) in vertices.iter().enumerate() {
         let (xx, yy) = vertices[(i + 1) % vertices.len()];
         let cross = x * yy - xx * y;
@@ -21,6 +22,7 @@ fn polygon_properties(vertices: &[(f64, f64)]) -> (f64, f64, f64, f64) {
         cy_numerator += (y + yy) * cross;
         ix12 += (y * y + y * yy + yy * yy) * cross;
         iy12 += (x * x + x * xx + xx * xx) * cross;
+        ixy24 += (2.0 * x * y + x * yy + xx * y + 2.0 * xx * yy) * cross;
     }
     let area = twice_area / 2.0;
     let cx = cx_numerator / (6.0 * area);
@@ -29,6 +31,7 @@ fn polygon_properties(vertices: &[(f64, f64)]) -> (f64, f64, f64, f64) {
         area,
         ix12 / 12.0 - area * cy * cy,
         iy12 / 12.0 - area * cx * cx,
+        ixy24 / 24.0 - area * cx * cy,
         cx,
     )
 }
@@ -75,10 +78,15 @@ fn open_sections_match_independent_polygon_integrals() {
         ),
     ];
     for (shape, boundary) in cases {
-        let (area, ix, iy, _) = polygon_properties(&boundary);
+        let (area, ix, iy, ixy, _) = polygon_properties(&boundary);
         close(shape.area().value, area);
         close(shape.moi_x().value, ix);
         close(shape.moi_y().value, iy);
+        close(shape.product_moi().value, ixy);
+        let mut shifted = shape;
+        shifted.with_cog(3.0, -2.0);
+        close(shifted.product_moi().value, ixy - 6.0 * area);
+        close(shifted.centroidal_area_moments().product_moi().value, ixy);
     }
 }
 
@@ -92,11 +100,12 @@ fn mirrored_double_angles_obey_parallel_axis_theorem_for_each_gap() {
         (0.5, 8.0),
         (0.0, 8.0),
     ];
-    let (area, ix, iy, cx) = polygon_properties(&boundary);
+    let (area, ix, iy, _, cx) = polygon_properties(&boundary);
     for gap in [0.0, 0.375, 0.75, 1.5] {
         let shape = StructuralShape::new_double_angle(8.0, 4.0, 0.5, gap);
         close(shape.area().value, 2.0 * area);
         close(shape.moi_x().value, 2.0 * ix);
+        close(shape.product_moi().value, 0.0);
         close(
             shape.moi_y().value,
             2.0 * (iy + area * (cx + gap / 2.0).powi(2)),
