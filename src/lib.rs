@@ -3,6 +3,8 @@
 #![warn(clippy::missing_docs_in_private_items)]
 #![doc = include_str!("../README.md")]
 
+mod open_sections;
+
 use num::{Float, NumCast};
 use typenum::{P4, Z0};
 use uom::si::{
@@ -10,7 +12,15 @@ use uom::si::{
     length::meter,
     {Quantity, ISQ, SI},
 };
-type SecondAreaMomentofInertia = Quantity<ISQ<P4, Z0, Z0, Z0, Z0, Z0, Z0>, SI<f64>, f64>;
+/// Second moment of area, stored in meters to the fourth power.
+pub type SecondAreaMomentofInertia = Quantity<ISQ<P4, Z0, Z0, Z0, Z0, Z0, Z0>, SI<f64>, f64>;
+
+#[cfg(feature = "aisc")]
+pub mod aisc;
+#[cfg(feature = "aisc")]
+pub use aisc::{
+    AiscSection, ParseAiscSectionError, SectionDimensions, SectionFamily, SectionProperties,
+};
 
 /// A helper function supporting conversion of floating point numbers to meters
 pub fn meters<T: Float>(l: T) -> Length {
@@ -21,6 +31,56 @@ pub fn meters<T: Float>(l: T) -> Length {
 #[derive(Clone, Copy, Debug)]
 #[non_exhaustive]
 pub enum StructuralShape {
+    /// Sharp-corner channel with a vertical web on the left and flanges pointing right.
+    Channel {
+        /// Overall horizontal width.
+        width: Length,
+        /// Overall vertical height.
+        height: Length,
+        /// Uniform web thickness.
+        web_thickness: Length,
+        /// Uniform flange thickness.
+        flange_thickness: Length,
+        /// Position of the geometric centroid.
+        center_of_gravity: (Length, Length),
+    },
+    /// Sharp-corner tee with a horizontal top flange and a vertical stem below it.
+    Tee {
+        /// Overall flange width.
+        width: Length,
+        /// Overall vertical height, including the flange.
+        height: Length,
+        /// Uniform stem thickness.
+        web_thickness: Length,
+        /// Uniform flange thickness.
+        flange_thickness: Length,
+        /// Position of the geometric centroid.
+        center_of_gravity: (Length, Length),
+    },
+    /// Sharp-corner L with a vertical leg on the left and a bottom leg pointing right.
+    Angle {
+        /// Overall horizontal leg width.
+        width: Length,
+        /// Overall vertical leg height.
+        height: Length,
+        /// Uniform thickness of both legs.
+        thickness: Length,
+        /// Position of the geometric centroid.
+        center_of_gravity: (Length, Length),
+    },
+    /// Mirrored sharp-corner angles with vertical legs back-to-back and bottom legs outward.
+    DoubleAngle {
+        /// Overall horizontal width of each individual angle.
+        width: Length,
+        /// Vertical height of the back-to-back legs.
+        height: Length,
+        /// Uniform thickness of the angle legs.
+        thickness: Length,
+        /// Clear horizontal spacing between the backs of the vertical legs.
+        gap: Length,
+        /// Position of the combined geometric centroid.
+        center_of_gravity: (Length, Length),
+    },
     /// This is a pipe with an outer_radius and a thickness
     Pipe {
         /// Outer radius of hte pipe
@@ -145,7 +205,7 @@ impl StructuralShape {
         }
     }
 
-    /// This function returns the moment of inertia of the structural shape around the x-axis
+    /// Second moment about the horizontal x-axis through the origin, including `A * y²`.
     /// ```
     /// # use structural_shapes::{StructuralShape};
     /// let shape = StructuralShape::new_rod(2.0);
@@ -153,6 +213,10 @@ impl StructuralShape {
     /// ```
     pub fn moi_x(&self) -> SecondAreaMomentofInertia {
         match *self {
+            Self::Channel { .. }
+            | Self::Tee { .. }
+            | Self::Angle { .. }
+            | Self::DoubleAngle { .. } => self.open_section_composite().moi_x(),
             StructuralShape::Pipe {
                 outer_radius,
                 thickness,
@@ -180,7 +244,7 @@ impl StructuralShape {
                 flange_thickness,
                 center_of_gravity,
             )
-            .moi_y(),
+            .moi_x(),
             StructuralShape::BoxBeam {
                 width,
                 height,
@@ -203,7 +267,7 @@ impl StructuralShape {
                 center_of_gravity,
             } => {
                 std::f64::consts::PI * radius * radius * radius * radius / 4.0
-                    + self.area() * center_of_gravity.0 * center_of_gravity.0
+                    + self.area() * center_of_gravity.1 * center_of_gravity.1
             }
             StructuralShape::Rectangle {
                 width,
@@ -211,13 +275,12 @@ impl StructuralShape {
                 center_of_gravity,
             } => {
                 width * height * height * height / 12.0
-                    + self.area() * center_of_gravity.0 * center_of_gravity.0
+                    + self.area() * center_of_gravity.1 * center_of_gravity.1
             }
         }
-        .into()
     }
 
-    /// This function returns the moment of inertia of hte structural shape around the y-axis
+    /// Second moment about the vertical y-axis through the origin, including `A * x²`.
     /// ```
     /// # use structural_shapes::StructuralShape;
     /// let shape = StructuralShape::new_rod(2.0);
@@ -225,6 +288,10 @@ impl StructuralShape {
     /// ```
     pub fn moi_y(&self) -> SecondAreaMomentofInertia {
         match *self {
+            Self::Channel { .. }
+            | Self::Tee { .. }
+            | Self::Angle { .. }
+            | Self::DoubleAngle { .. } => self.open_section_composite().moi_y(),
             StructuralShape::Pipe {
                 outer_radius,
                 thickness,
@@ -267,15 +334,15 @@ impl StructuralShape {
                 center_of_gravity,
             } => {
                 std::f64::consts::PI * radius * radius * radius * radius / 4.0
-                    + self.area() * center_of_gravity.1 * center_of_gravity.1
+                    + self.area() * center_of_gravity.0 * center_of_gravity.0
             }
             StructuralShape::Rectangle {
                 width,
                 height,
                 center_of_gravity,
             } => {
-                width * height * height * height / 12.0
-                    + self.area() * center_of_gravity.1 * center_of_gravity.1
+                height * width * width * width / 12.0
+                    + self.area() * center_of_gravity.0 * center_of_gravity.0
             }
         }
     }
@@ -298,6 +365,32 @@ impl StructuralShape {
     /// ```
     pub fn area(&self) -> Area {
         match *self {
+            Self::Channel {
+                width,
+                height,
+                web_thickness,
+                flange_thickness,
+                ..
+            } => 2.0 * width * flange_thickness + (height - 2.0 * flange_thickness) * web_thickness,
+            Self::Tee {
+                width,
+                height,
+                web_thickness,
+                flange_thickness,
+                ..
+            } => width * flange_thickness + (height - flange_thickness) * web_thickness,
+            Self::Angle {
+                width,
+                height,
+                thickness,
+                ..
+            } => (width + height - thickness) * thickness,
+            Self::DoubleAngle {
+                width,
+                height,
+                thickness,
+                ..
+            } => 2.0 * (width + height - thickness) * thickness,
             StructuralShape::Pipe {
                 outer_radius,
                 thickness,
@@ -333,12 +426,24 @@ impl StructuralShape {
     /// ```
     pub fn with_cog(&mut self, x: f64, y: f64) -> StructuralShape {
         self.set_cog((meters(x), meters(y)));
-        self.clone()
+        *self
     }
 
     /// A function to return the current center of gravity for a shape
     pub(crate) fn get_cog(&self) -> (Length, Length) {
         match *self {
+            Self::Channel {
+                center_of_gravity, ..
+            }
+            | Self::Tee {
+                center_of_gravity, ..
+            }
+            | Self::Angle {
+                center_of_gravity, ..
+            }
+            | Self::DoubleAngle {
+                center_of_gravity, ..
+            } => center_of_gravity,
             StructuralShape::Pipe {
                 center_of_gravity, ..
             } => center_of_gravity,
@@ -360,6 +465,24 @@ impl StructuralShape {
     /// A function to set the current center of gravity for a shape
     pub(crate) fn set_cog(&mut self, cog: (Length, Length)) {
         match *self {
+            Self::Channel {
+                ref mut center_of_gravity,
+                ..
+            }
+            | Self::Tee {
+                ref mut center_of_gravity,
+                ..
+            }
+            | Self::Angle {
+                ref mut center_of_gravity,
+                ..
+            }
+            | Self::DoubleAngle {
+                ref mut center_of_gravity,
+                ..
+            } => {
+                *center_of_gravity = cog;
+            }
             StructuralShape::Pipe {
                 ref mut center_of_gravity,
                 ..

@@ -12,6 +12,17 @@ license = "MIT"
 keywords = ["structural-analysis", "engineering"]
 categories = ["mathematics", "science", "simulation"]
 
+[features]
+default = []
+aisc = []
+
+[[example]]
+name = "select_section"
+required-features = ["aisc"]
+
+[package.metadata.docs.rs]
+all-features = true
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
